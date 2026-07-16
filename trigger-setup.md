@@ -231,27 +231,39 @@ on any push to that repo — no path filter needed (that was only relevant
 for a shared monorepo). Note the added `_DEPLOY_REPO_URL` substitution,
 which both build configs use to clone `bvo-deploy` mid-build:
 
+Trigger branch is `staging`, not `main` — pushing/merging to `main` no
+longer builds or deploys anything. Getting to prod is still the separate
+manual step in Section 3.
+
 ```
 gcloud builds triggers create github \
   --name=bvo-frontend-ci \
   --repo-owner=BionicVO --repo-name=bvo-new \
-  --branch-pattern="^main$" \
+  --branch-pattern="^staging$" \
   --build-config=cloudbuild-frontend.yaml \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 
 gcloud builds triggers create github \
   --name=bvo-backend-ci \
   --repo-owner=BionicVO --repo-name=bvo-api \
-  --branch-pattern="^main$" \
+  --branch-pattern="^staging$" \
   --build-config=cloudbuild-backend.yaml \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 ```
 
+If you already created these triggers with `--branch-pattern="^main$"`,
+update them in place instead of recreating:
+```
+gcloud builds triggers update github bvo-frontend-ci --branch-pattern="^staging$"
+gcloud builds triggers update github bvo-backend-ci --branch-pattern="^staging$"
+```
+
 ## 3. Promote staging → prod
 
-Every push to `main` auto-deploys to `staging` (see the `create-release`
-step in each `cloudbuild-*.yaml`). Getting the same release to `prod` is a
-two-step, human-gated process — nothing reaches prod on a push alone:
+Every push to the `staging` branch auto-deploys to the `staging` Cloud Run
+target (see the `create-release` step in each `cloudbuild-*.yaml`). Getting
+the same release to `prod` is a two-step, human-gated process — nothing
+reaches prod on a push alone:
 
 ```
 # 1. after verifying staging, migrate prod's DB and create the prod rollout

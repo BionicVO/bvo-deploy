@@ -33,9 +33,9 @@ apiVersion: deploy.cloud.google.com/v1
 kind: Target
 metadata:
   name: staging
-description: Staging environment — auto-deploys on every push to main
+description: Staging environment — auto-deploys on every push to the staging branch
 run:
-  location: projects/glass-marker-487618-i6/locations/us-central1
+  location: projects/PROJECT_ID/locations/REGION
 requireApproval: false
 
 ---
@@ -45,5 +45,5 @@ metadata:
   name: prod
 description: Production — requires manual approval before rollout
 run:
-  location: projects/glass-marker-487618-i6/locations/us-central1
+  location: projects/PROJECT_ID/locations/REGION
 requireApproval: true
