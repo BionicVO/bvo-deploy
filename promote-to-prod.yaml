@@ -38,7 +38,7 @@ steps:
         docker run --rm \
           --network=cloudbuild \
           -e DB_HOST -e DB_PORT -e DB_USERNAME -e DB_PASSWORD -e DB_NAME \
-          "$BACKEND_IMAGE" \
+          "$$BACKEND_IMAGE" \
           npm run migration:run
     secretEnv: ["DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PASSWORD", "DB_NAME"]
 
