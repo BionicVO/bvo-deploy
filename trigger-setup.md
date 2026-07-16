@@ -192,20 +192,43 @@ build step, not triggered directly — unless you later want a trigger that
 auto-runs `gcloud deploy apply` when `clouddeploy.yaml` changes.
 Do this once; after that, trigger creation in Section 2 below is pure `gcloud`.
 
-### 0.10 Grant IAM roles
+### 0.10 Create a custom Cloud Build service account and grant IAM roles
+
+2nd-gen triggers (the kind Section 2 creates) require an explicit
+`--service-account=` — but that service account must be **user-managed**;
+explicitly referencing the legacy default `PROJECT_NUMBER@cloudbuild.gserviceaccount.com`
+is rejected at build-run time with `invalid value for build.service_account`,
+even though trigger *creation* accepts it. So: create a real SA instead of
+reusing the default one.
 
 ```
 PROJECT_NUMBER=$(gcloud projects describe bvo-app --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CB_RUNNER="bvo-cloudbuild-runner@bvo-app.iam.gserviceaccount.com"
 
-gcloud projects add-iam-policy-binding bvo-app --member="serviceAccount:${CB_SA}" --role=roles/run.admin
-gcloud projects add-iam-policy-binding bvo-app --member="serviceAccount:${CB_SA}" --role=roles/clouddeploy.releaser
-gcloud projects add-iam-policy-binding bvo-app --member="serviceAccount:${CB_SA}" --role=roles/artifactregistry.writer
-gcloud projects add-iam-policy-binding bvo-app --member="serviceAccount:${CB_SA}" --role=roles/secretmanager.secretAccessor
+# 1. create the custom SA
+gcloud iam service-accounts create bvo-cloudbuild-runner \
+  --display-name="BionicVO Cloud Build runner"
+
+# 2. let Cloud Build's control plane act as this SA
+gcloud iam service-accounts add-iam-policy-binding "${CB_RUNNER}" \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator"
+
+# 3. grant the SA everything it needs to actually run the build steps in
+#    cloudbuild-*.yaml and promote-to-prod.yaml
+for ROLE in logging.logWriter cloudbuild.builds.builder run.admin \
+            clouddeploy.releaser artifactregistry.writer secretmanager.secretAccessor; do
+  gcloud projects add-iam-policy-binding bvo-app \
+    --member="serviceAccount:${CB_RUNNER}" --role="roles/${ROLE}"
+done
 
 # whoever will approve prod rollouts (can be yourself):
 gcloud projects add-iam-policy-binding bvo-app --member="user:YOUR_EMAIL" --role=roles/clouddeploy.approver
 ```
+
+Reference this SA as `projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com`
+in every `--service-account=` flag in Section 2 — don't use the
+`PROJECT_NUMBER@cloudbuild.gserviceaccount.com` default account there.
 
 Once Section 0 is done, continue with Sections 1–3 below using your actual
 `bvo-app` project ID and `us-central1` region in place of `PROJECT_ID`/`REGION`.
@@ -235,7 +258,7 @@ Trigger branch is `staging`, not `main` — pushing/merging to `main` no
 longer builds or deploys anything. Getting to prod is still the separate
 manual step in Section 3.
 
-**Three things that are easy to get wrong here, in order of how we actually
+**Four things that are easy to get wrong here, in order of how we actually
 hit them:**
 
 1. The console's "Connect repository" flow (Section 0.9) creates a
@@ -251,12 +274,14 @@ hit them:**
    gcloud builds repositories list --connection=CONNECTION_NAME --region=REGION
    ```
 3. **2nd-gen triggers require an explicit `--service-account=`** — omitting
-   it also fails with the same generic `INVALID_ARGUMENT`, with no
-   indication that a service account is the problem. Use the same Cloud
-   Build service account Section 0.10 already grants IAM roles to:
-   ```
-   PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
-   ```
+   it fails at trigger *creation* with the same generic `INVALID_ARGUMENT`,
+   no clearer than any other case of this error.
+4. That service account must be **user-managed** — explicitly referencing
+   the legacy default `PROJECT_NUMBER@cloudbuild.gserviceaccount.com` is
+   accepted at trigger creation but rejected the moment a build actually
+   runs (`invalid value for build.service_account`). Use the custom SA
+   Section 0.10 creates (`bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com`),
+   not the default one.
 
 Putting it together:
 
@@ -267,7 +292,7 @@ gcloud beta builds triggers create github \
   --repository=projects/PROJECT_ID/locations/REGION/connections/CONNECTION_NAME/repositories/CONNECTION_NAME-bvo-new \
   --branch-pattern="^staging$" \
   --build-config=cloudbuild-frontend.yaml \
-  --service-account=projects/PROJECT_ID/serviceAccounts/PROJECT_NUMBER@cloudbuild.gserviceaccount.com \
+  --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 
 gcloud beta builds triggers create github \
@@ -276,16 +301,24 @@ gcloud beta builds triggers create github \
   --repository=projects/PROJECT_ID/locations/REGION/connections/CONNECTION_NAME/repositories/CONNECTION_NAME-bvo-api \
   --branch-pattern="^staging$" \
   --build-config=cloudbuild-backend.yaml \
-  --service-account=projects/PROJECT_ID/serviceAccounts/PROJECT_NUMBER@cloudbuild.gserviceaccount.com \
+  --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 ```
 
-If a trigger needs its branch changed later, that's a plain update, not a
-recreate — but note `--service-account=` and `--repository=` are only valid
-on `create`; `update github` just takes the field you're changing:
+For a branch change (or any other field) on an already-working trigger,
+`update github` works in place:
 ```
 gcloud beta builds triggers update github bvo-frontend-ci --region=REGION --branch-pattern="^staging$"
 gcloud beta builds triggers update github bvo-backend-ci --region=REGION --branch-pattern="^staging$"
+```
+
+If you created a trigger with the legacy default service account (before
+Section 0.10 above existed) and need to switch it to the custom SA, try
+updating `--service-account=` in place first; if that field turns out to be
+creation-only, delete and recreate the trigger with the `create` command
+above instead:
+```
+gcloud beta builds triggers delete bvo-frontend-ci --region=REGION
 ```
 
 ## 3. Promote staging → prod
