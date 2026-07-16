@@ -229,33 +229,63 @@ file.
 Since `bvo-new` and `bvo-api` are already separate repos, each trigger fires
 on any push to that repo — no path filter needed (that was only relevant
 for a shared monorepo). Note the added `_DEPLOY_REPO_URL` substitution,
-which both build configs use to clone `bvo-deploy` mid-build:
+which both build configs use to clone `bvo-deploy` mid-build.
 
 Trigger branch is `staging`, not `main` — pushing/merging to `main` no
 longer builds or deploys anything. Getting to prod is still the separate
 manual step in Section 3.
 
+**Three things that are easy to get wrong here, in order of how we actually
+hit them:**
+
+1. The console's "Connect repository" flow (Section 0.9) creates a
+   **2nd-gen** repository connection, which needs the `gcloud beta` command
+   group and a `--repository=` resource path — not GA `gcloud builds` and
+   not the older `--repo-owner`/`--repo-name` flags (those are 1st-gen only
+   and fail with `INVALID_ARGUMENT` against a 2nd-gen connection).
+2. The repository resource `NAME` is prefixed with the connection name —
+   connection `BionicVO` + repo `bvo-new` → resource name `BionicVO-bvo-new`,
+   not just `bvo-new`. Look these up rather than guessing:
+   ```
+   gcloud builds connections list --region=REGION
+   gcloud builds repositories list --connection=CONNECTION_NAME --region=REGION
+   ```
+3. **2nd-gen triggers require an explicit `--service-account=`** — omitting
+   it also fails with the same generic `INVALID_ARGUMENT`, with no
+   indication that a service account is the problem. Use the same Cloud
+   Build service account Section 0.10 already grants IAM roles to:
+   ```
+   PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+   ```
+
+Putting it together:
+
 ```
-gcloud builds triggers create github \
+gcloud beta builds triggers create github \
   --name=bvo-frontend-ci \
-  --repo-owner=BionicVO --repo-name=bvo-new \
+  --region=REGION \
+  --repository=projects/PROJECT_ID/locations/REGION/connections/CONNECTION_NAME/repositories/CONNECTION_NAME-bvo-new \
   --branch-pattern="^staging$" \
   --build-config=cloudbuild-frontend.yaml \
+  --service-account=projects/PROJECT_ID/serviceAccounts/PROJECT_NUMBER@cloudbuild.gserviceaccount.com \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 
-gcloud builds triggers create github \
+gcloud beta builds triggers create github \
   --name=bvo-backend-ci \
-  --repo-owner=BionicVO --repo-name=bvo-api \
+  --region=REGION \
+  --repository=projects/PROJECT_ID/locations/REGION/connections/CONNECTION_NAME/repositories/CONNECTION_NAME-bvo-api \
   --branch-pattern="^staging$" \
   --build-config=cloudbuild-backend.yaml \
+  --service-account=projects/PROJECT_ID/serviceAccounts/PROJECT_NUMBER@cloudbuild.gserviceaccount.com \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 ```
 
-If you already created these triggers with `--branch-pattern="^main$"`,
-update them in place instead of recreating:
+If a trigger needs its branch changed later, that's a plain update, not a
+recreate — but note `--service-account=` and `--repository=` are only valid
+on `create`; `update github` just takes the field you're changing:
 ```
-gcloud builds triggers update github bvo-frontend-ci --branch-pattern="^staging$"
-gcloud builds triggers update github bvo-backend-ci --branch-pattern="^staging$"
+gcloud beta builds triggers update github bvo-frontend-ci --region=REGION --branch-pattern="^staging$"
+gcloud beta builds triggers update github bvo-backend-ci --region=REGION --branch-pattern="^staging$"
 ```
 
 ## 3. Promote staging → prod
