@@ -1,0 +1,49 @@
+# Cloud Deploy delivery pipeline for BionicVO — two environments: staging
+# and prod. One pipeline, two Cloud Run services (frontend + backend)
+# rendered from the same skaffold.yaml, so every release promotes both
+# images together — each environment always runs a pinned, known-good pair.
+#
+# Each stage activates a matching skaffold profile ("staging" / "prod") so
+# staging and prod render from their own service manifests — different
+# Cloud Run service names, scaling, and Secret Manager references. See
+# skaffold.yaml and the frontend/backend-service.{staging,prod}.yaml files.
+#
+# If you want stronger isolation, point the prod Target's `run.location`
+# at a separate GCP project instead of reusing PROJECT_ID — Cloud Deploy
+# supports cross-project targets as long as the Cloud Deploy service
+# account has run.admin in that project.
+#
+# Apply with:
+#   gcloud deploy apply --file=clouddeploy.yaml --region=REGION --project=PROJECT_ID
+
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: bvo-app-pipeline
+description: BionicVO frontend + backend Cloud Run pipeline (staging -> prod)
+serialPipeline:
+  stages:
+    - targetId: staging
+      profiles: [staging]
+    - targetId: prod
+      profiles: [prod]
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: staging
+description: Staging environment — auto-deploys on every push to main
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: false
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: prod
+description: Production — requires manual approval before rollout
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: true

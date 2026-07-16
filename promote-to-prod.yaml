@@ -1,0 +1,76 @@
+# Promotes an already-staged release to prod. Run manually (or trigger on
+# a version tag push, e.g. "v*") once staging has been verified.
+#
+# Usage:
+#   gcloud builds submit --no-source --config=promote-to-prod.yaml \
+#     --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline
+#
+# This does NOT bypass the approval gate: it calls `releases promote`, which
+# creates a prod rollout that stays pending until someone runs
+# `gcloud deploy rollouts approve` (see trigger-setup.md) or approves it in
+# the console.
+
+steps:
+  # Look up the exact backend image this release deployed to staging, so
+  # prod migrations run against the same code that was tested there.
+  - id: resolve-release-backend-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud deploy releases describe "${_RELEASE}" \
+          --delivery-pipeline="${_DELIVERY_PIPELINE}" \
+          --region="${_REGION}" \
+          --format='value(buildArtifacts.filter(a.image:"backend").image)' \
+          > /workspace/backend_image.txt
+        cat /workspace/backend_image.txt
+
+  # Migrates the PROD database — separate instance from staging, separate
+  # secrets, run right before the prod rollout is created.
+  - id: run-prod-migrations
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND_IMAGE=$(cat /workspace/backend_image.txt)
+        docker run --rm \
+          --network=cloudbuild \
+          -e DB_HOST -e DB_PORT -e DB_USERNAME -e DB_PASSWORD -e DB_NAME \
+          "$BACKEND_IMAGE" \
+          npm run migration:run
+    secretEnv: ["DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PASSWORD", "DB_NAME"]
+
+  - id: promote-to-prod
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - deploy
+      - releases
+      - promote
+      - --release=${_RELEASE}
+      - --delivery-pipeline=${_DELIVERY_PIPELINE}
+      - --region=${_REGION}
+      - --to-target=prod
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-host-prod/versions/latest
+      env: DB_HOST
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-port-prod/versions/latest
+      env: DB_PORT
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-username-prod/versions/latest
+      env: DB_USERNAME
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-password-prod/versions/latest
+      env: DB_PASSWORD
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-name-prod/versions/latest
+      env: DB_NAME
+
+substitutions:
+  _REGION: us-central1
+  _REPO: bvo-images
+  _DELIVERY_PIPELINE: bvo-app-pipeline
+
+options:
+  logging: CLOUD_LOGGING_ONLY

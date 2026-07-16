@@ -1,0 +1,31 @@
+# Skaffold config used by Cloud Deploy to render + deploy both Cloud Run
+# services from one release. No build section — images are already built
+# and pushed by Cloud Build; Cloud Deploy substitutes them via
+# `gcloud deploy releases create --images=frontend=...,backend=...`.
+#
+# Two environments: the "staging" and "prod" profiles below are activated
+# automatically by clouddeploy.yaml's stage config (each stage lists the
+# matching profile name), so a single release renders different manifests
+# per target — different Cloud Run service names, scaling, and secrets.
+
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: bvo-app
+manifests:
+  rawYaml:
+    - frontend-service.staging.yaml
+    - backend-service.staging.yaml
+deploy:
+  cloudrun: {}
+profiles:
+  - name: staging
+    manifests:
+      rawYaml:
+        - frontend-service.staging.yaml
+        - backend-service.staging.yaml
+  - name: prod
+    manifests:
+      rawYaml:
+        - frontend-service.prod.yaml
+        - backend-service.prod.yaml

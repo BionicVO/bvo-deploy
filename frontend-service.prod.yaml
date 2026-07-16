@@ -1,0 +1,27 @@
+# Cloud Run service manifest for bvo-new (frontend) — production.
+# Image tag is a placeholder — Cloud Deploy overwrites it at release time
+# via `--images=frontend=<resolved-image>`.
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bvo-frontend-prod
+  labels:
+    app: bvo-frontend
+    env: prod
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+    spec:
+      containerConcurrency: 100
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/bvo-images/frontend:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
