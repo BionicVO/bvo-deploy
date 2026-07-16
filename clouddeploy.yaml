@@ -35,7 +35,7 @@ metadata:
   name: staging
 description: Staging environment — auto-deploys on every push to main
 run:
-  location: projects/PROJECT_ID/locations/REGION
+  location: projects/glass-marker-487618-i6/locations/us-central1
 requireApproval: false
 
 ---
@@ -45,5 +45,5 @@ metadata:
   name: prod
 description: Production — requires manual approval before rollout
 run:
-  location: projects/PROJECT_ID/locations/REGION
+  location: projects/glass-marker-487618-i6/locations/us-central1
 requireApproval: true
