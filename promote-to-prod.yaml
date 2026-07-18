@@ -31,8 +31,8 @@ steps:
   #
   # Runs as a Cloud Run Job, not a raw `docker run` — see the comment in
   # cloudbuild-backend.yaml's run-staging-migrations step for why (private
-  # pools can't transitively reach Cloud SQL's private IP; the Serverless
-  # VPC Access connector can).
+  # pools can't transitively reach Cloud SQL's private IP over the `default`
+  # network; the Serverless VPC Access connector can).
   - id: run-prod-migrations
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
@@ -46,6 +46,7 @@ steps:
           --vpc-connector=bvo-vpc-connector \
           --vpc-egress=private-ranges-only \
           --set-secrets=DB_HOST=bvo-db-host-prod:latest,DB_PORT=bvo-db-port-prod:latest,DB_USERNAME=bvo-db-username-prod:latest,DB_PASSWORD=bvo-db-password-prod:latest,DB_NAME=bvo-db-name-prod:latest \
+          --set-env-vars=DB_SSL=true \
           --command=npm \
           --args=run,migration:run:prod \
           --max-retries=0 \

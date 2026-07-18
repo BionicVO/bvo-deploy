@@ -32,6 +32,8 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "staging"
+            - name: DB_SSL
+              value: "true"
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
