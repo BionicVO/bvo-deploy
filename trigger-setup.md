@@ -244,11 +244,25 @@ migrations run as a Cloud Run Job using that same connector, identical to
 how the deployed backend service already reaches Cloud SQL and Memorystore.
 
 `bvo-cloudbuild-runner`'s `run.admin` role (granted above) is enough to
-deploy and execute these jobs. But the **job's own runtime identity** —
-separate from Cloud Build's — is what actually reads the `--set-secrets`
-values at execution time, and needs `secretmanager.secretAccessor` in its
-own right. Jobs use the default Compute Engine service account unless you
-pass `--service-account=` to `gcloud run jobs deploy`; grant it here:
+deploy and execute these jobs. But two more identity links are needed, or
+`gcloud run jobs deploy` fails before the job is even created:
+
+**1. `bvo-cloudbuild-runner` needs permission to launch something that runs
+*as* another service account.** Jobs use the default Compute Engine service
+account unless you pass `--service-account=` to `gcloud run jobs deploy`,
+and deploying a resource that runs under a different identity always
+requires `iam.serviceAccounts.actAs` on that target identity — granted via
+`roles/iam.serviceAccountUser`, on the *service account*, not the project:
+
+```
+gcloud iam service-accounts add-iam-policy-binding "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --member="serviceAccount:${CB_RUNNER}" \
+  --role="roles/iam.serviceAccountUser"
+```
+
+**2. The job's own runtime identity** — separate from Cloud Build's — is
+what actually reads the `--set-secrets` values at execution time, and needs
+`secretmanager.secretAccessor` in its own right:
 
 ```
 gcloud projects add-iam-policy-binding bvo-app \
