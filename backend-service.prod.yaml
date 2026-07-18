@@ -61,11 +61,9 @@ spec:
                 secretKeyRef:
                   name: bvo-redis-url-prod
                   key: "latest"
-            - name: STRIPE_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: bvo-stripe-secret-prod
-                  key: "latest"
+            # STRIPE_SECRET_KEY intentionally not injected here — Stripe
+            # key handling is managed inside the app itself, not via this
+            # Cloud Run manifest/Secret Manager.
           resources:
             limits:
               cpu: "1"
