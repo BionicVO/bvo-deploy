@@ -28,19 +28,30 @@ steps:
 
   # Migrates the PROD database — separate instance from staging, separate
   # secrets, run right before the prod rollout is created.
+  #
+  # Runs as a Cloud Run Job, not a raw `docker run` — see the comment in
+  # cloudbuild-backend.yaml's run-staging-migrations step for why (private
+  # pools can't transitively reach Cloud SQL's private IP; the Serverless
+  # VPC Access connector can).
   - id: run-prod-migrations
-    name: gcr.io/cloud-builders/docker
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -c
       - |
         BACKEND_IMAGE=$(cat /workspace/backend_image.txt)
-        docker run --rm \
-          --network=cloudbuild \
-          -e DB_HOST -e DB_PORT -e DB_USERNAME -e DB_PASSWORD -e DB_NAME \
-          "$$BACKEND_IMAGE" \
-          npm run migration:run:prod
-    secretEnv: ["DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PASSWORD", "DB_NAME"]
+        gcloud run jobs deploy bvo-migrate-prod \
+          --image="$$BACKEND_IMAGE" \
+          --region="${_REGION}" \
+          --vpc-connector=bvo-vpc-connector \
+          --vpc-egress=private-ranges-only \
+          --set-secrets=DB_HOST=bvo-db-host-prod:latest,DB_PORT=bvo-db-port-prod:latest,DB_USERNAME=bvo-db-username-prod:latest,DB_PASSWORD=bvo-db-password-prod:latest,DB_NAME=bvo-db-name-prod:latest \
+          --command=npm \
+          --args=run,migration:run:prod \
+          --max-retries=0 \
+          --task-timeout=600 \
+          --quiet
+        gcloud run jobs execute bvo-migrate-prod --region="${_REGION}" --wait
 
   - id: promote-to-prod
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -53,19 +64,6 @@ steps:
       - --delivery-pipeline=${_DELIVERY_PIPELINE}
       - --region=${_REGION}
       - --to-target=prod
-
-availableSecrets:
-  secretManager:
-    - versionName: projects/$PROJECT_ID/secrets/bvo-db-host-prod/versions/latest
-      env: DB_HOST
-    - versionName: projects/$PROJECT_ID/secrets/bvo-db-port-prod/versions/latest
-      env: DB_PORT
-    - versionName: projects/$PROJECT_ID/secrets/bvo-db-username-prod/versions/latest
-      env: DB_USERNAME
-    - versionName: projects/$PROJECT_ID/secrets/bvo-db-password-prod/versions/latest
-      env: DB_PASSWORD
-    - versionName: projects/$PROJECT_ID/secrets/bvo-db-name-prod/versions/latest
-      env: DB_NAME
 
 substitutions:
   _REGION: us-central1

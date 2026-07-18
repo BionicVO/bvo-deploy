@@ -230,6 +230,37 @@ Reference this SA as `projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@
 in every `--service-account=` flag in Section 2 — don't use the
 `PROJECT_NUMBER@cloudbuild.gserviceaccount.com` default account there.
 
+### 0.11 Grant the migration Cloud Run Jobs' runtime identity access to secrets
+
+`run-staging-migrations` and `run-prod-migrations` (in `cloudbuild-backend.yaml`
+and `promote-to-prod.yaml`) run database migrations as **Cloud Run Jobs**
+(`bvo-migrate-staging` / `bvo-migrate-prod`), not a raw `docker run` step —
+a plain Cloud Build step (and even a Cloud Build private pool) can't reach
+Cloud SQL's private IP, because VPC peering isn't transitive: the pool's
+peering to `bvo-vpc` and Cloud SQL's own peering to `bvo-vpc` don't chain
+into a route between them. The Serverless VPC Access connector doesn't have
+that problem — its instances live directly inside `bvo-vpc`'s subnet — so
+migrations run as a Cloud Run Job using that same connector, identical to
+how the deployed backend service already reaches Cloud SQL and Memorystore.
+
+`bvo-cloudbuild-runner`'s `run.admin` role (granted above) is enough to
+deploy and execute these jobs. But the **job's own runtime identity** —
+separate from Cloud Build's — is what actually reads the `--set-secrets`
+values at execution time, and needs `secretmanager.secretAccessor` in its
+own right. Jobs use the default Compute Engine service account unless you
+pass `--service-account=` to `gcloud run jobs deploy`; grant it here:
+
+```
+gcloud projects add-iam-policy-binding bvo-app \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+```
+
+The deployed backend **service** (`backend-service.staging.yaml` /
+`backend-service.prod.yaml`) reads secrets the same way via `secretKeyRef`
+and runs under the same default identity unless you specify otherwise, so
+this one grant covers both the migration jobs and the running service.
+
 Once Section 0 is done, continue with Sections 1–3 below using your actual
 `bvo-app` project ID and `us-central1` region in place of `PROJECT_ID`/`REGION`.
 
