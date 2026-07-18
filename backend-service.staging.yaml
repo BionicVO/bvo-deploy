@@ -27,8 +27,9 @@ spec:
           ports:
             - containerPort: 3000
           env:
-            - name: PORT
-              value: "3000"
+            # PORT is deliberately not set here — Cloud Run reserves that
+            # name and injects it automatically to match containerPort
+            # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "staging"
             - name: DB_HOST
