@@ -1,0 +1,126 @@
+# Cloud Build trigger config for the bvo-api repo (backend) — a standalone
+# repo, not a monorepo folder. This file lives at bvo-api's repo root, so
+# `dir` is omitted below (Cloud Build's default working dir is already the
+# repo root Cloud Build just checked out).
+#
+# Substitutions (set defaults on the trigger, override per-build if needed):
+#   _REGION            e.g. us-central1
+#   _REPO              Artifact Registry repo name, e.g. bvo-images
+#   _DELIVERY_PIPELINE  Cloud Deploy pipeline name, e.g. bvo-app-pipeline
+#   _DEPLOY_REPO_URL    e.g. https://github.com/BionicVO/bvo-deploy.git
+#     (the separate repo holding clouddeploy.yaml/skaffold.yaml/manifests —
+#     see trigger-setup.md for why this lives in its own repo)
+
+steps:
+  - id: install
+    name: node:20
+    entrypoint: npm
+    args: ["ci"]
+
+  # Removed: bvo-api/package.json has no "lint" script (unlike bvo-new,
+  # which does). Add a step back here once bvo-api has one — run
+  # `npm run` locally to see what scripts actually exist first.
+
+  # bvo-api's "test" script runs compiled output (build/test/**/*.test.js),
+  # not the TS source directly — compile first or `npm test` fails with no
+  # test files found. This mirrors "start", which also runs from build/.
+  - id: compile
+    name: node:20
+    entrypoint: npm
+    args: ["run", "build"]
+
+  - id: unit-test
+    name: node:20
+    entrypoint: npm
+    args: ["test"]
+
+  - id: build-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:$SHORT_SHA"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:latest"
+      - "."
+
+  - id: push-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend"
+
+  # Same pairing logic as the frontend trigger, mirrored: look up the most
+  # recently pushed frontend image so the release has a valid pair.
+  - id: resolve-frontend-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud artifacts docker images list \
+          "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/frontend" \
+          --sort-by=~UPDATE_TIME --limit=1 --format='value(package)' \
+          > /workspace/frontend_image.txt
+
+  # Migrates the STAGING database only — this pipeline always deploys to
+  # staging first. Prod migrations run separately in promote-to-prod.yaml,
+  # right before the prod rollout, against the prod DB.
+  - id: run-staging-migrations
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        docker run --rm \
+          --network=cloudbuild \
+          -e DB_HOST -e DB_PORT -e DB_USERNAME -e DB_PASSWORD -e DB_NAME \
+          "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:$SHORT_SHA" \
+          npm run migration:run
+    secretEnv: ["DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PASSWORD", "DB_NAME"]
+
+  # clouddeploy.yaml/skaffold.yaml/manifests live in the separate bvo-deploy
+  # repo, not in bvo-api — clone it so `gcloud deploy releases create` below
+  # has a Skaffold config to render from. This assumes bvo-deploy is public;
+  # if you make it private, use an authenticated clone URL instead
+  # (https://TOKEN@github.com/... with TOKEN pulled from Secret Manager).
+  - id: fetch-deploy-config
+    name: gcr.io/cloud-builders/git
+    args: ["clone", "--depth=1", "${_DEPLOY_REPO_URL}", "/workspace/bvo-deploy"]
+
+  - id: create-release
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        FRONTEND_IMAGE=$(cat /workspace/frontend_image.txt)
+        gcloud deploy releases create "rel-$SHORT_SHA" \
+          --delivery-pipeline="${_DELIVERY_PIPELINE}" \
+          --region="${_REGION}" \
+          --source=/workspace/bvo-deploy \
+          --images="backend=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/backend:$SHORT_SHA,frontend=$$FRONTEND_IMAGE" \
+          --to-target=staging
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-host-staging/versions/latest
+      env: DB_HOST
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-port-staging/versions/latest
+      env: DB_PORT
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-username-staging/versions/latest
+      env: DB_USERNAME
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-password-staging/versions/latest
+      env: DB_PASSWORD
+    - versionName: projects/$PROJECT_ID/secrets/bvo-db-name-staging/versions/latest
+      env: DB_NAME
+
+substitutions:
+  _REGION: us-central1
+  _REPO: bvo-images
+  _DELIVERY_PIPELINE: bvo-app-pipeline
+  _DEPLOY_REPO_URL: https://github.com/BionicVO/bvo-deploy.git
+
+options:
+  logging: CLOUD_LOGGING_ONLY
