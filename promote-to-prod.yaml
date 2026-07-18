@@ -39,7 +39,7 @@ steps:
           --network=cloudbuild \
           -e DB_HOST -e DB_PORT -e DB_USERNAME -e DB_PASSWORD -e DB_NAME \
           "$$BACKEND_IMAGE" \
-          npm run migration:run
+          npm run migration:run:prod
     secretEnv: ["DB_HOST", "DB_PORT", "DB_USERNAME", "DB_PASSWORD", "DB_NAME"]
 
   - id: promote-to-prod
