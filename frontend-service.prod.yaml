@@ -1,6 +1,10 @@
 # Cloud Run service manifest for bvo-new (frontend) — production.
-# Image tag is a placeholder — Cloud Deploy overwrites it at release time
-# via `--images=frontend=<resolved-image>`.
+# `image: frontend` below is a bare artifact-key placeholder, not a real
+# path — Skaffold/Cloud Deploy matches it against the `--images=frontend=...`
+# key at release time and swaps in the actual pushed image URI. It must
+# stay exactly "frontend" (no registry prefix) or the substitution silently
+# doesn't happen and Cloud Run tries to pull the literal placeholder text
+# as an image reference (this bit us once — see trigger-setup.md).
 
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -18,7 +22,7 @@ spec:
     spec:
       containerConcurrency: 100
       containers:
-        - image: REGION-docker.pkg.dev/PROJECT_ID/bvo-images/frontend:latest
+        - image: frontend
           ports:
             - containerPort: 8080
           resources:

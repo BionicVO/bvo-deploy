@@ -1,6 +1,10 @@
 # Cloud Run service manifest for bvo-api (backend) — staging.
-# Image tag is a placeholder — Cloud Deploy overwrites it at release time
-# via `--images=backend=<resolved-image>`.
+# `image: backend` below is a bare artifact-key placeholder, not a real
+# path — Skaffold/Cloud Deploy matches it against the `--images=backend=...`
+# key at release time and swaps in the actual pushed image URI. It must
+# stay exactly "backend" (no registry prefix) or the substitution silently
+# doesn't happen and Cloud Run tries to pull the literal placeholder text
+# as an image reference (this bit us once — see trigger-setup.md).
 # Points at the STAGING Cloud SQL (PostgreSQL) instance and STAGING
 # Memorystore for Valkey instance — separate from prod's, so staging never
 # touches production data. Secrets are separate per environment too.
@@ -23,7 +27,7 @@ spec:
     spec:
       containerConcurrency: 80
       containers:
-        - image: REGION-docker.pkg.dev/PROJECT_ID/bvo-images/backend:latest
+        - image: backend
           ports:
             - containerPort: 3000
           env:
