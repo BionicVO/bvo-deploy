@@ -10,17 +10,30 @@ after it (the `.yaml` files you already have) assumes these resources exist.
 `bvo-new` and `bvo-api` are separate repos under
 [github.com/BionicVO](https://github.com/BionicVO) — each owns its own
 `cloudbuild-*.yaml` at its repo root (see the comment at the top of each
-file). But `clouddeploy.yaml`, `skaffold.yaml`, the four
-`*-service.{staging,prod}.yaml` manifests, and `promote-to-prod.yaml` don't
-belong to either app — a release always pairs both images together, so this
-config needs to live somewhere both builds can reach it.
+file). But the Cloud Deploy/Skaffold config and the four
+`*-service.{staging,prod}.yaml` manifests don't belong to either app, so
+this config needs to live somewhere both builds can reach it.
+
+**Frontend and backend each have their own independent Cloud Deploy
+pipeline** (`bvo-frontend-pipeline` / `bvo-backend-pipeline`), not one
+shared pipeline — Cloud Deploy only allows one Cloud Run service per
+Target (confirmed in Google's own docs: "You can only deploy one Cloud Run
+service, job, or worker pool per target"), so an earlier design that tried
+to pair both images into a single release/target never actually worked
+(it failed at Skaffold render time with "expected singular node for cloud
+run manifest but was 2"). See the comment at the top of
+`clouddeploy-frontend.yaml` for the full story. Both apps still deploy on
+every push to `staging` and both gate on manual approval before prod —
+just as two parallel, independently-promoted tracks instead of one joined
+release.
 
 Create a third repo, **`bvo-deploy`**, under the same GitHub org, and push
-those five files there. Making it public is the simplest option (it holds
-no secrets — actual values live in Secret Manager — only structure), since
-both `cloudbuild-frontend.yaml` and `cloudbuild-backend.yaml` now `git
-clone` it mid-build via a `_DEPLOY_REPO_URL` substitution. If you'd rather
-keep it private, swap that clone step's URL for an authenticated one
+all of the deploy-related files there. Making it public is the simplest
+option (it holds no secrets — actual values live in Secret Manager — only
+structure), since both `cloudbuild-frontend.yaml` and
+`cloudbuild-backend.yaml` now `git clone` it mid-build via a
+`_DEPLOY_REPO_URL` substitution. If you'd rather keep it private, swap
+that clone step's URL for an authenticated one
 (`https://TOKEN@github.com/...`) with the token stored in Secret Manager.
 
 ```
@@ -33,19 +46,28 @@ github.com/BionicVO/bvo-api/            (existing repo — backend app)
 └── cloudbuild-backend.yaml
 
 github.com/BionicVO/bvo-deploy/         (new repo — shared release config)
-├── clouddeploy.yaml
-├── skaffold.yaml
+├── clouddeploy-frontend.yaml
+├── clouddeploy-backend.yaml
+├── skaffold-frontend.yaml
+├── skaffold-backend.yaml
 ├── frontend-service.staging.yaml
 ├── frontend-service.prod.yaml
 ├── backend-service.staging.yaml
 ├── backend-service.prod.yaml
-├── promote-to-prod.yaml
+├── promote-frontend-to-prod.yaml
+├── promote-backend-to-prod.yaml
+├── clouddeploy.yaml            (SUPERSEDED — kept only as a reference; do not apply)
+├── skaffold.yaml                (SUPERSEDED — kept only as a reference; do not apply)
+├── promote-to-prod.yaml         (SUPERSEDED — kept only as a reference; do not use)
 ├── trigger-setup.md
 └── secrets-list.txt
 ```
 
 `trigger-setup.md` and `secrets-list.txt` are just reference docs — put
 them in `bvo-deploy` too so anyone setting this up has one place to look.
+The three SUPERSEDED files can be deleted from `bvo-deploy` entirely once
+you're confident the split-pipeline setup works — they're only kept around
+here as a documented dead end so nobody re-derives the same broken design.
 
 ## 0. First-time GCP project, tooling, and repo setup
 
@@ -262,7 +284,7 @@ in every `--service-account=` flag in Section 2 — don't use the
 ### 0.11 Grant the migration Cloud Run Jobs' runtime identity access to secrets
 
 `run-staging-migrations` and `run-prod-migrations` (in `cloudbuild-backend.yaml`
-and `promote-to-prod.yaml`) run database migrations as **Cloud Run Jobs**
+and `promote-backend-to-prod.yaml`) run database migrations as **Cloud Run Jobs**
 (`bvo-migrate-staging` / `bvo-migrate-prod`), not a raw `docker run` step —
 a plain Cloud Build step (and even a Cloud Build private pool) can't reach
 Cloud SQL's private IP, because VPC peering isn't transitive: the pool's
@@ -307,26 +329,30 @@ this one grant covers both the migration jobs and the running service.
 Once Section 0 is done, continue with Sections 1–3 below using your actual
 `bvo-app` project ID and `us-central1` region in place of `PROJECT_ID`/`REGION`.
 
-## 1. Apply the Cloud Deploy pipeline
+## 1. Apply the two Cloud Deploy pipelines
 
-Run this from a checkout of `bvo-deploy` (or with `clouddeploy.yaml` copied
-locally):
+Two separate pipelines now, one per service — apply both, from a checkout
+of `bvo-deploy` (or with the files copied locally):
 
 ```
-gcloud deploy apply --file=clouddeploy.yaml \
+gcloud deploy apply --file=clouddeploy-frontend.yaml \
+  --region=REGION --project=PROJECT_ID
+
+gcloud deploy apply --file=clouddeploy-backend.yaml \
   --region=REGION --project=PROJECT_ID
 ```
 
-`clouddeploy.yaml` still has literal `PROJECT_ID`/`REGION` placeholders inside
-the `run.location` fields — replace those before applying, or `envsubst` the
-file.
+Both files still have literal `PROJECT_ID`/`REGION` placeholders inside the
+`run.location` fields — replace those before applying, or `envsubst` them.
 
 ## 2. Create the two Cloud Build triggers
 
 Since `bvo-new` and `bvo-api` are already separate repos, each trigger fires
 on any push to that repo — no path filter needed (that was only relevant
-for a shared monorepo). Note the added `_DEPLOY_REPO_URL` substitution,
-which both build configs use to clone `bvo-deploy` mid-build.
+for a shared monorepo). Note the `_DEPLOY_REPO_URL` substitution, which both
+build configs use to clone `bvo-deploy` mid-build, and the
+`_DELIVERY_PIPELINE` / `_SKAFFOLD_FILE` substitutions, which now point at
+each service's own pipeline and Skaffold config rather than a shared one.
 
 Trigger branch is `staging`, not `main` — pushing/merging to `main` no
 longer builds or deploys anything. Getting to prod is still the separate
@@ -367,7 +393,7 @@ gcloud beta builds triggers create github \
   --branch-pattern="^staging$" \
   --build-config=cloudbuild-frontend.yaml \
   --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
-  --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
+  --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-frontend-pipeline,_SKAFFOLD_FILE=skaffold-frontend.yaml,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 
 gcloud beta builds triggers create github \
   --name=bvo-backend-ci \
@@ -376,7 +402,7 @@ gcloud beta builds triggers create github \
   --branch-pattern="^staging$" \
   --build-config=cloudbuild-backend.yaml \
   --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
-  --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
+  --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline,_SKAFFOLD_FILE=skaffold-backend.yaml,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 ```
 
 For a branch change (or any other field) on an already-working trigger,
@@ -397,38 +423,77 @@ gcloud beta builds triggers delete bvo-frontend-ci --region=REGION
 
 ## 3. Promote staging → prod
 
-Every push to the `staging` branch auto-deploys to the `staging` Cloud Run
-target (see the `create-release` step in each `cloudbuild-*.yaml`). Getting
-the same release to `prod` is a two-step, human-gated process — nothing
-reaches prod on a push alone:
+Every push to the `staging` branch auto-deploys both services to their
+respective staging Cloud Run targets (see the `create-release` step in
+each `cloudbuild-*.yaml`). Getting a release to prod is a two-step,
+human-gated process per service — nothing reaches prod on a push alone,
+and frontend/backend are promoted independently of each other (they're
+separate pipelines now, so there's no single combined "promote everything"
+command):
 
 ```
+# --- Backend ---
 # 1. after verifying staging, migrate prod's DB and create the prod rollout
-#    (promote-to-prod.yaml runs prod migrations against the SAME image that
-#    was deployed to staging, then calls `releases promote`):
-gcloud builds submit --no-source --config=promote-to-prod.yaml \
-  --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-app-pipeline
+#    (promote-backend-to-prod.yaml runs prod migrations against the SAME
+#    image that was deployed to staging, then calls `releases promote`):
+gcloud builds submit --no-source --config=promote-backend-to-prod.yaml \
+  --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline
 
 # 2. approve the pending prod rollout (or click Approve in the Cloud Deploy console):
 gcloud deploy rollouts approve <rollout-id> \
   --release=rel-<short-sha> \
-  --delivery-pipeline=bvo-app-pipeline \
+  --delivery-pipeline=bvo-backend-pipeline \
   --region=REGION \
-  --target=prod
+  --target=backend-prod
+
+# --- Frontend ---
+# 1. no DB migration needed, so this is just the promote call:
+gcloud builds submit --no-source --config=promote-frontend-to-prod.yaml \
+  --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_DELIVERY_PIPELINE=bvo-frontend-pipeline
+
+# 2. approve:
+gcloud deploy rollouts approve <rollout-id> \
+  --release=rel-<short-sha> \
+  --delivery-pipeline=bvo-frontend-pipeline \
+  --region=REGION \
+  --target=frontend-prod
+```
+
+Note the `<short-sha>` in `rel-<short-sha>` will generally differ between
+the two services, since each app's release is created by its own build,
+triggered by its own push — check each pipeline's release list if you're
+not sure which release corresponds to which commit:
+```
+gcloud deploy releases list --delivery-pipeline=bvo-backend-pipeline --region=REGION
+gcloud deploy releases list --delivery-pipeline=bvo-frontend-pipeline --region=REGION
 ```
 
 Find `<rollout-id>` with:
 ```
 gcloud deploy rollouts list --release=rel-<short-sha> \
-  --delivery-pipeline=bvo-app-pipeline --region=REGION --target=prod
+  --delivery-pipeline=bvo-backend-pipeline --region=REGION --target=backend-prod
+
+gcloud deploy rollouts list --release=rel-<short-sha> \
+  --delivery-pipeline=bvo-frontend-pipeline --region=REGION --target=frontend-prod
 ```
 
 ## 4. Notes
 
 `frontend-service.yaml` / `backend-service.yaml` (the original single-environment
 manifests) are superseded by the `.staging.yaml` / `.prod.yaml` versions and are
-no longer referenced by `skaffold.yaml` — safe to ignore or delete locally.
+no longer referenced by either `skaffold-frontend.yaml` or
+`skaffold-backend.yaml` — safe to ignore or delete locally.
 
-All five deploy-related files (`clouddeploy.yaml`, `skaffold.yaml`, the four
-service manifests, `promote-to-prod.yaml`) belong in `bvo-deploy`, not in
-`bvo-new` or `bvo-api` — see "Repo layout" at the top of this file.
+`clouddeploy.yaml`, `skaffold.yaml`, and `promote-to-prod.yaml` (no
+frontend/backend suffix) are an earlier, broken "one pipeline for both
+services" design — superseded by `clouddeploy-frontend.yaml` /
+`clouddeploy-backend.yaml`, `skaffold-frontend.yaml` / `skaffold-backend.yaml`,
+and `promote-frontend-to-prod.yaml` / `promote-backend-to-prod.yaml`. Don't
+apply or run the un-suffixed versions — see "Repo layout" at the top of
+this file for why they don't work.
+
+The current, working set of deploy-related files
+(`clouddeploy-frontend.yaml`, `clouddeploy-backend.yaml`,
+`skaffold-frontend.yaml`, `skaffold-backend.yaml`, the four service
+manifests, `promote-frontend-to-prod.yaml`, `promote-backend-to-prod.yaml`)
+belong in `bvo-deploy`, not in `bvo-new` or `bvo-api`.

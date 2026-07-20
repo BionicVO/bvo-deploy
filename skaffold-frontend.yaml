@@ -1,0 +1,23 @@
+# Skaffold config for the frontend-only Cloud Deploy pipeline
+# (clouddeploy-frontend.yaml). Deploys exactly one Cloud Run service, per
+# Cloud Deploy's "one service per Target" limitation — see the comment at
+# the top of clouddeploy-frontend.yaml for the full explanation.
+
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: frontend
+manifests:
+  rawYaml:
+    - frontend-service.staging.yaml
+deploy:
+  cloudrun: {}
+profiles:
+  - name: staging
+    manifests:
+      rawYaml:
+        - frontend-service.staging.yaml
+  - name: prod
+    manifests:
+      rawYaml:
+        - frontend-service.prod.yaml

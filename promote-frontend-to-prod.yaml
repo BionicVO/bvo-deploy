@@ -1,0 +1,36 @@
+# Promotes an already-staged FRONTEND release to prod. Run manually (or
+# trigger on a version tag push, e.g. "v*") once staging has been verified.
+#
+# Separate from promote-backend-to-prod.yaml — since backend and frontend
+# now use independent Cloud Deploy pipelines (see the comment at the top of
+# clouddeploy-frontend.yaml for why), each has its own promotion flow. This
+# one is simpler than the backend's — no database, so no migration step.
+#
+# Usage:
+#   gcloud builds submit --no-source --config=promote-frontend-to-prod.yaml \
+#     --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_DELIVERY_PIPELINE=bvo-frontend-pipeline
+#
+# This does NOT bypass the approval gate: it calls `releases promote`, which
+# creates a prod rollout that stays pending until someone runs
+# `gcloud deploy rollouts approve` (see trigger-setup.md) or approves it in
+# the console.
+
+steps:
+  - id: promote-to-prod
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - deploy
+      - releases
+      - promote
+      - --release=${_RELEASE}
+      - --delivery-pipeline=${_DELIVERY_PIPELINE}
+      - --region=${_REGION}
+      - --to-target=frontend-prod
+
+substitutions:
+  _REGION: us-central1
+  _DELIVERY_PIPELINE: bvo-frontend-pipeline
+
+options:
+  logging: CLOUD_LOGGING_ONLY

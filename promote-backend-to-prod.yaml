@@ -1,0 +1,79 @@
+# Promotes an already-staged BACKEND release to prod. Run manually (or
+# trigger on a version tag push, e.g. "v*") once staging has been verified.
+#
+# Separate from promote-frontend-to-prod.yaml — since backend and frontend
+# now use independent Cloud Deploy pipelines (see the comment at the top of
+# clouddeploy-frontend.yaml for why), each has its own promotion flow.
+#
+# Usage:
+#   gcloud builds submit --no-source --config=promote-backend-to-prod.yaml \
+#     --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline
+#
+# This does NOT bypass the approval gate: it calls `releases promote`, which
+# creates a prod rollout that stays pending until someone runs
+# `gcloud deploy rollouts approve` (see trigger-setup.md) or approves it in
+# the console.
+
+steps:
+  # Look up the exact backend image this release deployed to staging, so
+  # prod migrations run against the same code that was tested there.
+  - id: resolve-release-backend-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud deploy releases describe "${_RELEASE}" \
+          --delivery-pipeline="${_DELIVERY_PIPELINE}" \
+          --region="${_REGION}" \
+          --format='value(buildArtifacts.filter(a.image:"backend").image)' \
+          > /workspace/backend_image.txt
+        cat /workspace/backend_image.txt
+
+  # Migrates the PROD database — separate instance from staging, separate
+  # secrets, run right before the prod rollout is created.
+  #
+  # Runs as a Cloud Run Job, not a raw `docker run` — see the comment in
+  # cloudbuild-backend.yaml's run-staging-migrations step for why (private
+  # pools can't transitively reach Cloud SQL's private IP over the `default`
+  # network; the Serverless VPC Access connector can).
+  - id: run-prod-migrations
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND_IMAGE=$(cat /workspace/backend_image.txt)
+        gcloud run jobs deploy bvo-migrate-prod \
+          --image="$$BACKEND_IMAGE" \
+          --region="${_REGION}" \
+          --vpc-connector=bvo-vpc-connector \
+          --vpc-egress=private-ranges-only \
+          --set-secrets=DB_HOST=bvo-db-host-prod:latest,DB_PORT=bvo-db-port-prod:latest,DB_USERNAME=bvo-db-username-prod:latest,DB_PASSWORD=bvo-db-password-prod:latest,DB_NAME=bvo-db-name-prod:latest \
+          --set-env-vars=DB_SSL=true \
+          --command=npm \
+          --args=run,migration:run:prod \
+          --max-retries=0 \
+          --task-timeout=600 \
+          --quiet
+        gcloud run jobs execute bvo-migrate-prod --region="${_REGION}" --wait
+
+  - id: promote-to-prod
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - deploy
+      - releases
+      - promote
+      - --release=${_RELEASE}
+      - --delivery-pipeline=${_DELIVERY_PIPELINE}
+      - --region=${_REGION}
+      - --to-target=backend-prod
+
+substitutions:
+  _REGION: us-central1
+  _REPO: bvo-images
+  _DELIVERY_PIPELINE: bvo-backend-pipeline
+
+options:
+  logging: CLOUD_LOGGING_ONLY
