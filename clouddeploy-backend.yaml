@@ -1,0 +1,40 @@
+# Cloud Deploy delivery pipeline for bvo-api (backend) — staging -> prod.
+#
+# SEPARATE from clouddeploy-frontend.yaml — see the comment at the top of
+# that file for why (Cloud Deploy only allows one Cloud Run service per
+# Target; a single joined pipeline for both services doesn't work).
+#
+# Apply with:
+#   gcloud deploy apply --file=clouddeploy-backend.yaml --region=REGION --project=PROJECT_ID
+
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: bvo-backend-pipeline
+description: BionicVO backend (bvo-api) Cloud Run pipeline (staging -> prod)
+serialPipeline:
+  stages:
+    - targetId: backend-staging
+      profiles: [staging]
+    - targetId: backend-prod
+      profiles: [prod]
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: backend-staging
+description: Backend staging environment — auto-deploys on every push to the staging branch
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: false
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: backend-prod
+description: Backend production — requires manual approval before rollout
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: true

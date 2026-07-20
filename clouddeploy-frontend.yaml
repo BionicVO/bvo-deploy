@@ -1,0 +1,52 @@
+# Cloud Deploy delivery pipeline for bvo-new (frontend) — staging -> prod.
+#
+# SEPARATE from clouddeploy-backend.yaml. Cloud Deploy's Cloud Run support
+# only allows ONE Cloud Run service per Target (confirmed in Google's own
+# docs: "You can only deploy one Cloud Run service, job, or worker pool per
+# target"), so a single pipeline/target pair holding both frontend and
+# backend manifests together doesn't work — Skaffold's render step fails
+# with "expected singular node for cloud run manifest but was 2" no matter
+# how the skaffold.yaml is restructured, because Cloud Deploy flattens the
+# whole file before rendering against one target. Two independent
+# pipelines (this one, and clouddeploy-backend.yaml) is the fix.
+#
+# Both apps still deploy on every push to staging and both gate on manual
+# approval before prod — just as two parallel tracks instead of one joined
+# release. This also removes the need for the old resolve-frontend-image /
+# resolve-backend-image cross-referencing steps in cloudbuild-*.yaml, since
+# each release now only ever contains its own single image.
+#
+# Apply with:
+#   gcloud deploy apply --file=clouddeploy-frontend.yaml --region=REGION --project=PROJECT_ID
+
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: bvo-frontend-pipeline
+description: BionicVO frontend (bvo-new) Cloud Run pipeline (staging -> prod)
+serialPipeline:
+  stages:
+    - targetId: frontend-staging
+      profiles: [staging]
+    - targetId: frontend-prod
+      profiles: [prod]
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: frontend-staging
+description: Frontend staging environment — auto-deploys on every push to the staging branch
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: false
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: frontend-prod
+description: Frontend production — requires manual approval before rollout
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: true
