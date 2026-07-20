@@ -405,12 +405,30 @@ gcloud beta builds triggers create github \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline,_SKAFFOLD_FILE=skaffold-backend.yaml,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 ```
 
-For a branch change (or any other field) on an already-working trigger,
-`update github` works in place:
+For a branch-pattern change on an already-working trigger, `update github`
+works in place:
 ```
 gcloud beta builds triggers update github bvo-frontend-ci --region=REGION --branch-pattern="^staging$"
 gcloud beta builds triggers update github bvo-backend-ci --region=REGION --branch-pattern="^staging$"
 ```
+
+**But not for substitutions** (e.g. changing `_DELIVERY_PIPELINE` or adding
+`_SKAFFOLD_FILE`) — `gcloud beta builds triggers update github ... --update-substitutions=...`
+fails with a generic `INVALID_ARGUMENT`, even though `--update-substitutions`
+is a documented, valid flag. `--log-http` shows why: the `update github`
+subcommand always injects a legacy `"github": {"push": {}}` stanza into its
+PATCH body, which conflicts with this trigger's actual 2nd-gen
+`repositoryEventConfig`-based definition (same 1st-gen-vs-2nd-gen mismatch
+as the original trigger-creation `INVALID_ARGUMENT` errors). Work around it
+with export/edit/import instead, which round-trips the full resource
+without adding that stanza:
+```
+gcloud beta builds triggers export bvo-frontend-ci --region=REGION --destination=/tmp/frontend-trigger.yaml
+# edit /tmp/frontend-trigger.yaml's substitutions block (e.g. with sed, or
+# open it in the Cloud Shell editor), then:
+gcloud beta builds triggers import --source=/tmp/frontend-trigger.yaml --region=REGION
+```
+Repeat for `bvo-backend-ci` with its own export file.
 
 If you created a trigger with the legacy default service account (before
 Section 0.10 above existed) and need to switch it to the custom SA, try
