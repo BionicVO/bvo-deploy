@@ -96,25 +96,28 @@ gcloud services enable \
   iam.googleapis.com
 ```
 
-### 0.4 Create a VPC and the private-connectivity plumbing
+### 0.4 Set up the private-connectivity plumbing
 
 Cloud SQL and Memorystore both need private networking set up before you
-can create the instances themselves.
+can create the instances themselves. **Use the project's existing `default`
+network rather than creating a separate `bvo-vpc`** — every GCP project
+already has one, and there's no benefit to a second network here. (Earlier
+drafts of this doc referenced a `bvo-vpc` that was never actually created;
+if you already have Cloud SQL instances with a private IP on some other
+network, use that network's name instead of `default` throughout.)
 
 ```
-gcloud compute networks create bvo-vpc --subnet-mode=auto
-
 # reserve an IP range for Cloud SQL's private connection (Private Services Access):
 gcloud compute addresses create bvo-psa-range \
-  --global --purpose=VPC_PEERING --prefix-length=16 --network=bvo-vpc
+  --global --purpose=VPC_PEERING --prefix-length=16 --network=default
 
 gcloud services vpc-peerings connect \
   --service=servicenetworking.googleapis.com \
-  --ranges=bvo-psa-range --network=bvo-vpc
+  --ranges=bvo-psa-range --network=default
 
 # Serverless VPC Access connector — this is what lets Cloud Run reach into the VPC:
 gcloud compute networks vpc-access connectors create bvo-vpc-connector \
-  --region=us-central1 --network=bvo-vpc --range=10.8.0.0/28
+  --region=us-central1 --network=default --range=10.8.0.0/28
 ```
 
 ### 0.5 Create the Cloud SQL (PostgreSQL) instances — one per environment
@@ -125,7 +128,7 @@ for ENV in staging prod; do
     --database-version=POSTGRES_16 \
     --tier=db-custom-1-3840 \
     --region=us-central1 \
-    --network=projects/bvo-app/global/networks/bvo-vpc \
+    --network=projects/PROJECT_ID/global/networks/default \
     --no-assign-ip
 
   gcloud sql databases create bvo_db --instance="bvo-db-$ENV"
@@ -133,9 +136,24 @@ for ENV in staging prod; do
 done
 ```
 
-Grab each instance's private IP (`gcloud sql instances describe bvo-db-staging
---format='value(ipAddresses[0].ipAddress)'`) — you'll store it as a secret
-in step 0.7.
+**Actual instance names in this project don't match the placeholders above** —
+they were created via the console before this script ran, and Cloud SQL
+instances can't be renamed after creation (only cloned into a new
+differently-named instance, which isn't worth the cost/complexity here since
+the instance name never appears anywhere in the app config anyway — only its
+private IP, via the secrets below, does). Substitute your real names
+everywhere you see `bvo-db-staging` / `bvo-db-prod` in this doc and in
+`cloudbuild-backend.yaml` / `promote-to-prod.yaml`'s comments:
+
+| Environment | Actual instance name    |
+|-------------|--------------------------|
+| staging     | `bionicvo-postgres`     |
+| prod        | `bionic-postgres-prod`  |
+
+Grab each instance's private IP (`gcloud sql instances describe bionicvo-postgres
+--format='value(ipAddresses)'` — after adding a private IP per the networking
+fix already applied, this returns both the public and private address; use
+the one with `type: PRIVATE`) — you'll store it as a secret in step 0.7.
 
 ### 0.6 Create the Memorystore for Valkey instances — one per environment
 
@@ -146,9 +164,9 @@ linked below before you run this — but the shape is:
 ```
 for ENV in staging prod; do
   gcloud memorystore instances create "bvo-valkey-$ENV" \
-    --project=bvo-app --location=us-central1 \
+    --project=PROJECT_ID --location=us-central1 \
     --node-type=SHARED_CORE_NANO --shard-count=1 --replica-count=0 \
-    --endpoints='[{"connections":[{"pscAutoConnection":{"network":"projects/bvo-app/global/networks/bvo-vpc","projectId":"bvo-app"}}]}]'
+    --endpoints='[{"connections":[{"pscAutoConnection":{"network":"projects/PROJECT_ID/global/networks/default","projectId":"PROJECT_ID"}}]}]'
 done
 ```
 
@@ -162,11 +180,13 @@ gcloud artifacts repositories create bvo-images \
 ### 0.8 Create the Secret Manager entries
 
 One set per environment — names must match what's already in
-`backend-service.staging.yaml` / `backend-service.prod.yaml`:
+`backend-service.staging.yaml` / `backend-service.prod.yaml`. Note: Stripe
+is intentionally *not* in this list — Stripe key handling is managed inside
+the app itself, not via Secret Manager/Cloud Run env vars.
 
 ```
 for ENV in staging prod; do
-  for NAME in db-host db-port db-username db-password db-name redis-url stripe-secret; do
+  for NAME in db-host db-port db-username db-password db-name redis-url; do
     gcloud secrets create "bvo-$NAME-$ENV" --replication-policy=automatic
   done
 done
@@ -174,9 +194,18 @@ done
 # then add the actual values, e.g.:
 printf '10.x.x.x' | gcloud secrets versions add bvo-db-host-staging --data-file=-
 printf 'CHANGE_ME_staging' | gcloud secrets versions add bvo-db-password-staging --data-file=-
-# ...repeat for each secret with its real value (staging DB IP, prod DB IP,
-# staging/prod Valkey connection string, Stripe test key for staging, live key for prod)
+# ...repeat for each secret with its real value (staging DB private IP, prod
+# DB private IP, staging/prod Valkey discovery endpoint as redis://HOST:PORT)
 ```
+
+**`DB_SSL` is a plain env var, not a secret.** `bvo-api`'s datasource config
+(`ssl: DATABASE_CONFIG.SSL === "true" ? {rejectUnauthorized: false} : false`)
+requires the exact string `"true"` to enable SSL — without it, Cloud SQL's
+`pg_hba.conf` rejects the connection with `no encryption`, since these
+instances enforce `sslMode: ENCRYPTED_ONLY`. It's set via `--set-env-vars`
+on the migration Cloud Run Jobs (`cloudbuild-backend.yaml`,
+`promote-to-prod.yaml`) and as a plain `env` entry (not `secretKeyRef`) in
+both `backend-service.*.yaml` manifests.
 
 ### 0.9 Connect your GitHub repos to Cloud Build
 
@@ -237,9 +266,9 @@ and `promote-to-prod.yaml`) run database migrations as **Cloud Run Jobs**
 (`bvo-migrate-staging` / `bvo-migrate-prod`), not a raw `docker run` step —
 a plain Cloud Build step (and even a Cloud Build private pool) can't reach
 Cloud SQL's private IP, because VPC peering isn't transitive: the pool's
-peering to `bvo-vpc` and Cloud SQL's own peering to `bvo-vpc` don't chain
+peering to `default` and Cloud SQL's own peering to `default` don't chain
 into a route between them. The Serverless VPC Access connector doesn't have
-that problem — its instances live directly inside `bvo-vpc`'s subnet — so
+that problem — its instances live directly inside `default`'s subnet — so
 migrations run as a Cloud Run Job using that same connector, identical to
 how the deployed backend service already reaches Cloud SQL and Memorystore.
 

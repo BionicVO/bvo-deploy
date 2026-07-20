@@ -7,15 +7,22 @@
 # automatically by clouddeploy.yaml's stage config (each stage lists the
 # matching profile name), so a single release renders different manifests
 # per target — different Cloud Run service names, scaling, and secrets.
+#
+# IMPORTANT: Skaffold's Cloud Run deployer (`deploy: cloudrun: {}`) only
+# supports ONE Cloud Run service per config module — a single module listing
+# both frontend and backend manifests fails at render time with "expected
+# singular node for cloud run manifest but was 2". So this file defines two
+# separate Skaffold Config documents (frontend, backend), each deploying its
+# own service, linked via `requires` so Cloud Deploy renders/deploys both
+# together as a single release/rollout instead of treating them as unrelated.
 
 apiVersion: skaffold/v4beta7
 kind: Config
 metadata:
-  name: bvo-app
+  name: frontend
 manifests:
   rawYaml:
     - frontend-service.staging.yaml
-    - backend-service.staging.yaml
 deploy:
   cloudrun: {}
 profiles:
@@ -23,9 +30,28 @@ profiles:
     manifests:
       rawYaml:
         - frontend-service.staging.yaml
-        - backend-service.staging.yaml
   - name: prod
     manifests:
       rawYaml:
         - frontend-service.prod.yaml
+---
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: backend
+requires:
+  - configs: ["frontend"]
+manifests:
+  rawYaml:
+    - backend-service.staging.yaml
+deploy:
+  cloudrun: {}
+profiles:
+  - name: staging
+    manifests:
+      rawYaml:
+        - backend-service.staging.yaml
+  - name: prod
+    manifests:
+      rawYaml:
         - backend-service.prod.yaml
