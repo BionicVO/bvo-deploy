@@ -5,6 +5,11 @@
 # stay exactly "frontend" (no registry prefix) or the substitution silently
 # doesn't happen and Cloud Run tries to pull the literal placeholder text
 # as an image reference (this bit us once — see trigger-setup.md).
+#
+# API_BASE_URL is read at RUNTIME by server.js (via a /env-config.js route
+# it serves), not baked in at build time — this lets the same built image
+# get promoted from staging to prod without pointing at the wrong backend.
+# See src/config/api.ts for how the frontend consumes this at runtime.
 
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -25,6 +30,9 @@ spec:
         - image: frontend
           ports:
             - containerPort: 8080
+          env:
+            - name: API_BASE_URL
+              value: "https://bvo-backend-staging-516740748317.us-central1.run.app"
           resources:
             limits:
               cpu: "1"
