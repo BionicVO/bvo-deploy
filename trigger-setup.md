@@ -439,6 +439,29 @@ above instead:
 gcloud beta builds triggers delete bvo-frontend-ci --region=REGION
 ```
 
+## 2.5 Make the Cloud Run services public
+
+Cloud Run services default to requiring IAM authentication — the
+Skaffold-rendered manifests don't touch IAM policy at all, so every
+service comes up private the first time it's deployed, and hitting its
+URL directly returns a 403. For a public-facing web app, grant
+`roles/run.invoker` to `allUsers` once per service, after its first
+successful deploy:
+
+```
+gcloud run services add-iam-policy-binding bvo-frontend-staging \
+  --region=REGION --member=allUsers --role=roles/run.invoker
+
+gcloud run services add-iam-policy-binding bvo-backend-staging \
+  --region=REGION --member=allUsers --role=roles/run.invoker
+```
+
+Do the same for `bvo-frontend-prod` / `bvo-backend-prod` once those exist
+(after the first prod promotion — see Section 3). This binding persists
+across redeploys/revisions (Cloud Deploy doesn't reset IAM policy on each
+release), so it's one-time per service unless the service itself gets
+deleted and recreated.
+
 ## 3. Promote staging → prod
 
 Every push to the `staging` branch auto-deploys both services to their
