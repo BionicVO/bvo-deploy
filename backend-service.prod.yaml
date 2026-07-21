@@ -35,6 +35,15 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "production"
+            # bootstrap.ts builds its CORS allowlist from CLIENT_URLS (falls
+            # back to APP_URL, comma-separated). Note: bootstrap.ts also
+            # skips the allowlist entirely (corsOptions = {}) when
+            # SERVER_CONFIG.ENV === "PROD" (an exact-match check against a
+            # separate ENV var, not NODE_ENV, which is not set anywhere in
+            # this manifest) — so CORS stays locked to this explicit list
+            # here rather than accidentally opening wide.
+            - name: CLIENT_URLS
+              value: "https://bvo-frontend-prod-516740748317.us-central1.run.app"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST

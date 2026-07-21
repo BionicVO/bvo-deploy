@@ -36,6 +36,13 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "staging"
+            # bootstrap.ts builds its CORS allowlist from CLIENT_URLS (falls
+            # back to APP_URL, comma-separated) — with neither set here,
+            # `origin` was an empty array and cors() rejected every request
+            # from the frontend, regardless of ENV. This is what was causing
+            # the CORS/Network Error in the browser.
+            - name: CLIENT_URLS
+              value: "https://bvo-frontend-staging-516740748317.us-central1.run.app"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST
