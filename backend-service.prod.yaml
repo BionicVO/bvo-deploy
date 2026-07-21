@@ -67,6 +67,19 @@ spec:
                 secretKeyRef:
                   name: bvo-redis-url-prod
                   key: "latest"
+            # Required at startup — ElevenLabsClientService.js constructs
+            # the ElevenLabs SDK client at module import time (not lazily),
+            # and the SDK itself reads this exact env var name if no key is
+            # passed explicitly. Missing this crashes the whole process
+            # before it can bind to PORT, which Cloud Run reports as a
+            # generic "container failed to start and listen on the port"
+            # health-check failure — worth remembering if this env var ever
+            # gets accidentally removed.
+            - name: ELEVENLABS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-elevenlabs-key-prod
+                  key: "latest"
             # STRIPE_SECRET_KEY intentionally not injected here — Stripe
             # key handling is managed inside the app itself, not via this
             # Cloud Run manifest/Secret Manager.
