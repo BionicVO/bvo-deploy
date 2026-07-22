@@ -89,6 +89,16 @@ spec:
                 secretKeyRef:
                   name: bvo-elevenlabs-key-prod
                   key: "latest"
+            # Required — JwtService signs/verifies all auth tokens with
+            # SERVER_CONFIG.SECRET (process.env.SECRET). Missing this makes
+            # every login fail with a 400 "secretOrPrivateKey must have a
+            # value" error from the jsonwebtoken library, even though the
+            # request itself is otherwise fine.
+            - name: SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-jwt-secret-prod
+                  key: "latest"
             # STRIPE_SECRET_KEY intentionally not injected here — Stripe
             # key handling is managed inside the app itself, not via this
             # Cloud Run manifest/Secret Manager.
