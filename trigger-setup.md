@@ -441,13 +441,19 @@ gcloud beta builds triggers create github \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline,_SKAFFOLD_FILE=skaffold-backend.yaml,_TO_TARGET=backend-pre-prod,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
 ```
 
-After editing the pipelines, re-apply both so Cloud Deploy learns the new
-pre-prod targets/stages:
+After editing the pipelines (adding/changing targets or stages), re-apply
+both so Cloud Deploy learns the change — `gcloud deploy apply` is required;
+the config repo being cloned during a build does NOT register it:
 
 ```
-gcloud deploy apply --file=clouddeploy-backend.yaml  --region=REGION --project=PROJECT_ID
-gcloud deploy apply --file=clouddeploy-frontend.yaml --region=REGION --project=PROJECT_ID
+gcloud deploy apply --file=clouddeploy-backend.yaml  --region=us-central1 --project=glass-marker-487618-i6
+gcloud deploy apply --file=clouddeploy-frontend.yaml --region=us-central1 --project=glass-marker-487618-i6
 ```
+
+The target `run.location` fields in `clouddeploy-*.yaml` are hardcoded to the
+real project/region (`gcloud deploy apply` does NOT substitute placeholders —
+a literal `locations/REGION` yields `PERMISSION_DENIED ... locations/region`
+at release time), so the files apply directly with no `sed` step.
 
 For a branch-pattern change on an already-working trigger, `update github`
 works in place:

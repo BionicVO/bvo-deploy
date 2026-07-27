@@ -5,7 +5,7 @@
 # Target; a single joined pipeline for both services doesn't work).
 #
 # Apply with:
-#   gcloud deploy apply --file=clouddeploy-backend.yaml --region=REGION --project=PROJECT_ID
+#   gcloud deploy apply --file=clouddeploy-backend.yaml --region=us-central1 --project=glass-marker-487618-i6
 
 apiVersion: deploy.cloud.google.com/v1
 kind: DeliveryPipeline
@@ -28,7 +28,7 @@ metadata:
   name: backend-staging
 description: Backend staging environment — auto-deploys on every push to the staging branch
 run:
-  location: projects/PROJECT_ID/locations/REGION
+  location: projects/glass-marker-487618-i6/locations/us-central1
 requireApproval: false
 
 ---
@@ -38,7 +38,7 @@ metadata:
   name: backend-pre-prod
 description: Backend pre-production — auto-deploys on merge to main; points at the STAGING database (validate release candidates against staging data, never prod)
 run:
-  location: projects/PROJECT_ID/locations/REGION
+  location: projects/glass-marker-487618-i6/locations/us-central1
 requireApproval: false
 
 ---
@@ -48,5 +48,5 @@ metadata:
   name: backend-prod
 description: Backend production — requires manual approval before rollout
 run:
-  location: projects/PROJECT_ID/locations/REGION
+  location: projects/glass-marker-487618-i6/locations/us-central1
 requireApproval: true
