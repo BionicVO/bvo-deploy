@@ -23,11 +23,13 @@ apiVersion: deploy.cloud.google.com/v1
 kind: DeliveryPipeline
 metadata:
   name: bvo-frontend-pipeline
-description: BionicVO frontend (bvo-new) Cloud Run pipeline (staging -> prod)
+description: BionicVO frontend (bvo-new) Cloud Run pipeline (staging -> pre-prod -> prod)
 serialPipeline:
   stages:
     - targetId: frontend-staging
       profiles: [staging]
+    - targetId: frontend-pre-prod
+      profiles: [pre-prod]
     - targetId: frontend-prod
       profiles: [prod]
 
@@ -37,6 +39,16 @@ kind: Target
 metadata:
   name: frontend-staging
 description: Frontend staging environment — auto-deploys on every push to the staging branch
+run:
+  location: projects/PROJECT_ID/locations/REGION
+requireApproval: false
+
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: frontend-pre-prod
+description: Frontend pre-production — auto-deploys on merge to main; talks to the pre-prod backend (which runs against the staging database)
 run:
   location: projects/PROJECT_ID/locations/REGION
 requireApproval: false

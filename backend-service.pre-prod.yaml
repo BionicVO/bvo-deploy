@@ -1,0 +1,113 @@
+# Cloud Run service manifest for bvo-api (backend) — pre-prod.
+# `image: backend` below is a bare artifact-key placeholder, not a real
+# path — Skaffold/Cloud Deploy matches it against the `--images=backend=...`
+# key at release time and swaps in the actual pushed image URI. It must
+# stay exactly "backend" (no registry prefix) or the substitution silently
+# doesn't happen and Cloud Run tries to pull the literal placeholder text
+# as an image reference (this bit us once — see trigger-setup.md).
+#
+# Pre-production: auto-deploys on merge to `main` (release-candidate
+# validation) and deliberately points at the STAGING Cloud SQL (PostgreSQL)
+# + STAGING Valkey + staging third-party keys — it must NEVER touch prod
+# data. It is a separate Cloud Run service from staging (own trigger/branch),
+# but shares staging's data/secrets. If you later want pre-prod isolated from
+# staging, create `bvo-*-pre-prod` secrets and point the refs below at them.
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bvo-backend-pre-prod
+  labels:
+    app: bvo-backend
+    env: pre-prod
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "5"
+        run.googleapis.com/vpc-access-connector: bvo-vpc-connector
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      containerConcurrency: 80
+      containers:
+        - image: backend
+          ports:
+            - containerPort: 3000
+          env:
+            # PORT is deliberately not set here — Cloud Run reserves that
+            # name and injects it automatically to match containerPort
+            # above. Setting it manually causes deployment to fail.
+            - name: NODE_ENV
+              value: "pre-prod"
+            # bootstrap.ts builds its CORS allowlist from CLIENT_URLS (falls
+            # back to APP_URL, comma-separated) — with neither set here,
+            # `origin` was an empty array and cors() rejected every request
+            # from the frontend, regardless of ENV. Point this at the pre-prod
+            # frontend origin (confirm the URL once the pre-prod frontend
+            # service exists).
+            - name: CLIENT_URLS
+              value: "https://bvo-frontend-pre-prod-516740748317.us-central1.run.app"
+            - name: DB_SSL
+              value: "true"
+            # --- STAGING database (pre-prod validates against staging data) ---
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-db-host-staging
+                  key: "latest"
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-db-port-staging
+                  key: "latest"
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-db-username-staging
+                  key: "latest"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-db-password-staging
+                  key: "latest"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-db-name-staging
+                  key: "latest"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-redis-url-staging
+                  key: "latest"
+            # Required at startup — ElevenLabsClientService.js constructs
+            # the ElevenLabs SDK client at module import time (not lazily),
+            # and the SDK itself reads this exact env var name if no key is
+            # passed explicitly. Missing this crashes the whole process
+            # before it can bind to PORT, which Cloud Run reports as a
+            # generic "container failed to start and listen on the port"
+            # health-check failure — worth remembering if this env var ever
+            # gets accidentally removed.
+            - name: ELEVENLABS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-elevenlabs-key-staging
+                  key: "latest"
+            # Required — JwtService signs/verifies all auth tokens with
+            # SERVER_CONFIG.SECRET (process.env.SECRET). Missing this makes
+            # every login fail with a 400 "secretOrPrivateKey must have a
+            # value" error from the jsonwebtoken library, even though the
+            # request itself is otherwise fine.
+            - name: SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-jwt-secret-staging
+                  key: "latest"
+            # STRIPE_SECRET_KEY intentionally not injected here — Stripe
+            # key handling is managed inside the app itself, not via this
+            # Cloud Run manifest/Secret Manager.
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi

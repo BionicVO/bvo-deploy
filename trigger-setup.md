@@ -354,9 +354,19 @@ build configs use to clone `bvo-deploy` mid-build, and the
 `_DELIVERY_PIPELINE` / `_SKAFFOLD_FILE` substitutions, which now point at
 each service's own pipeline and Skaffold config rather than a shared one.
 
-Trigger branch is `staging`, not `main` — pushing/merging to `main` no
-longer builds or deploys anything. Getting to prod is still the separate
-manual step in Section 3.
+Two branches now trigger builds, via two triggers per repo:
+
+- **`staging` branch** → deploys to the **staging** target (`_TO_TARGET`
+  defaults to `backend-staging` / `frontend-staging`).
+- **`main` branch** (merge) → deploys to the **pre-prod** target
+  (`_TO_TARGET=backend-pre-prod` / `frontend-pre-prod`). Pre-prod runs
+  against the **staging database** — see `backend-service.pre-prod.yaml`.
+
+Both are auto-deploy (no approval). Getting to **prod** is still the separate
+manual promotion in Section 3 (`requireApproval: true` on the prod target).
+The pipelines are `staging → pre-prod → prod`; `--to-target` on
+`gcloud deploy releases create` (set from `_TO_TARGET` in the build config)
+controls which stage a given release lands on.
 
 **Four things that are easy to get wrong here, in order of how we actually
 hit them:**
@@ -403,6 +413,40 @@ gcloud beta builds triggers create github \
   --build-config=cloudbuild-backend.yaml \
   --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
   --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline,_SKAFFOLD_FILE=skaffold-backend.yaml,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
+```
+
+### Pre-prod triggers (merge to `main`)
+
+Same build configs, a `^main$` branch pattern, and `_TO_TARGET` overridden to
+the pre-prod stage. These deploy to the pre-prod Cloud Run services, which run
+against the **staging database** (`*-service.pre-prod.yaml`).
+
+```
+gcloud beta builds triggers create github \
+  --name=bvo-frontend-preprod-ci \
+  --region=REGION \
+  --repository=projects/PROJECT_ID/locations/REGION/connections/CONNECTION_NAME/repositories/CONNECTION_NAME-bvo-new \
+  --branch-pattern="^main$" \
+  --build-config=cloudbuild-frontend.yaml \
+  --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
+  --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-frontend-pipeline,_SKAFFOLD_FILE=skaffold-frontend.yaml,_TO_TARGET=frontend-pre-prod,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
+
+gcloud beta builds triggers create github \
+  --name=bvo-backend-preprod-ci \
+  --region=REGION \
+  --repository=projects/PROJECT_ID/locations/REGION/connections/CONNECTION_NAME/repositories/CONNECTION_NAME-bvo-api \
+  --branch-pattern="^main$" \
+  --build-config=cloudbuild-backend.yaml \
+  --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
+  --substitutions=_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline,_SKAFFOLD_FILE=skaffold-backend.yaml,_TO_TARGET=backend-pre-prod,_DEPLOY_REPO_URL=https://github.com/BionicVO/bvo-deploy.git
+```
+
+After editing the pipelines, re-apply both so Cloud Deploy learns the new
+pre-prod targets/stages:
+
+```
+gcloud deploy apply --file=clouddeploy-backend.yaml  --region=REGION --project=PROJECT_ID
+gcloud deploy apply --file=clouddeploy-frontend.yaml --region=REGION --project=PROJECT_ID
 ```
 
 For a branch-pattern change on an already-working trigger, `update github`
@@ -461,6 +505,102 @@ Do the same for `bvo-frontend-prod` / `bvo-backend-prod` once those exist
 across redeploys/revisions (Cloud Deploy doesn't reset IAM policy on each
 release), so it's one-time per service unless the service itself gets
 deleted and recreated.
+
+## 2.6 Wire up GCS storage (Studio audio files)
+
+The Render deployment stored uploaded audio (Speeches, Actors, Profiles,
+StudioExports, AudioWatermarks) either on local disk or in an existing GCS
+bucket (`bvo-assets`). Cloud Run's local filesystem is ephemeral and
+per-revision, so anything relying on local storage disappears on every
+redeploy — this is what caused Studio audio 400/404s on staging.
+
+**Important — this is not an env-var switch.** `GCSClientService` reads its
+provider/bucket/base-URL from a `storage` row in the `admin_settings` table
+(`AdminSettingsService.getStoredStorageSettings()`), not from
+`GCP_CONFIG.GCP_BUCKET`/`GCP_CONFIG.GCS_BASE_URL` directly. Those two env
+vars only seed the *default* the very first time that DB row is created —
+once a `storage` settings row exists (which it does, post-migration from
+Render), env vars are ignored entirely. Switching providers requires an
+authenticated call to the admin API, not a Cloud Run manifest change.
+
+1. **Grant the Cloud Run service account bucket + signing permissions.**
+   `bvo-backend-staging` runs as the default compute service account
+   (`PROJECT_NUMBER-compute@developer.gserviceaccount.com` — confirm via
+   `gcloud run services describe bvo-backend-staging --region=REGION
+   --format='value(spec.template.spec.serviceAccountName)'`). Since no
+   `gcsServiceAccountJson`/`GCP_KEY` is configured, `GCSClientService`
+   falls back to Application Default Credentials, which needs two grants:
+
+   ```
+   # Read/write objects in the bucket
+   gcloud storage buckets add-iam-policy-binding gs://bvo-assets \
+     --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+     --role="roles/storage.objectAdmin"
+
+   # Required for generateV4ReadSignedUrl() under ADC — the Node GCS client
+   # signs blobs via IAM's signBlob API when using ADC (no key file), which
+   # requires the runtime SA to be able to impersonate/token-create for
+   # itself. Easy to miss; signed URLs fail silently without it.
+   gcloud iam service-accounts add-iam-policy-binding \
+     PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+     --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+     --role="roles/iam.serviceAccountTokenCreator"
+   ```
+
+   Repeat both bindings for the prod service account once `bvo-backend-prod`
+   exists (same account unless a dedicated prod SA is created later).
+
+2. **Flip the DB-stored provider to `gcs`.** Call the admin endpoint that
+   maps to `AdminSettingsController.updateStorageSettings` /
+   `AdminSettingsService.updateStorageSettings` (find the exact route in
+   the admin router file — search for `updateStorageSettings` — it will be
+   something like `PUT /api/v1/admin/settings/storage`, gated behind admin
+   auth). Example:
+
+   ```
+   curl -X PUT https://bvo-backend-staging-516740748317.us-central1.run.app/api/v1/admin/settings/storage \
+     -H "Authorization: Bearer <admin JWT>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "provider": "gcs",
+       "gcsBucket": "bvo-assets",
+       "gcsBaseUrl": "https://storage.googleapis.com"
+     }'
+   ```
+
+   `validateStorageSettings` requires `gcsBucket` to be non-empty when
+   `provider` is `"gcs"` — nothing else is required (no service account
+   JSON needed; leaving `gcsServiceAccountJson` unset means it uses the
+   ADC grants from step 1). Verify with `GET .../api/v1/admin/settings/storage`
+   — response should show `"provider": "gcs"`.
+
+3. **Backfill existing files.** Copy whatever was on Render's disk into the
+   bucket, preserving the exact relative paths the app expects
+   (`Speeches/audio-<speechId>.mp3`, `Actors/...`, `Profiles/...`,
+   `StudioExports/...`, `AudioWatermarks/...` — these map to the
+   `STORAGE_FILE_PATH.*` folders referenced in `bootstrap.ts`'s static
+   routes). From wherever the Render files were downloaded to locally:
+
+   ```
+   gcloud storage cp -r ./Speeches gs://bvo-assets/Speeches
+   gcloud storage cp -r ./Actors gs://bvo-assets/Actors
+   gcloud storage cp -r ./Profiles gs://bvo-assets/Profiles
+   gcloud storage cp -r ./StudioExports gs://bvo-assets/StudioExports
+   gcloud storage cp -r ./AudioWatermarks gs://bvo-assets/AudioWatermarks
+   ```
+
+4. **Test and verify.** Call `POST .../api/v1/admin/settings/storage/test`
+   (maps to `AdminSettingsController.testStorageSettings` →
+   `gcsClientService.testStorageConnection()`) — it uploads a small test
+   file to `Speeches/` and generates a signed read URL, confirming both the
+   IAM grants and the provider switch worked end to end. Then open an
+   affected Studio project and confirm audio actually plays.
+
+5. **If serving from a custom domain** (`staging-app.bionicvo.us` instead
+   of the raw Cloud Run URL), add it to the backend's `CLIENT_URLS` env var
+   in `backend-service.staging.yaml` (comma-separated if both need to work
+   simultaneously) — otherwise requests from that origin will hit the same
+   CORS rejection described in Section 2's CORS fix.
 
 ## 3. Promote staging → prod
 

@@ -17,6 +17,10 @@ profiles:
     manifests:
       rawYaml:
         - backend-service.staging.yaml
+  - name: pre-prod
+    manifests:
+      rawYaml:
+        - backend-service.pre-prod.yaml
   - name: prod
     manifests:
       rawYaml:
