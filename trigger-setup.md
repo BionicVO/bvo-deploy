@@ -506,11 +506,29 @@ gcloud run services add-iam-policy-binding bvo-backend-staging \
   --region=REGION --member=allUsers --role=roles/run.invoker
 ```
 
-Do the same for `bvo-frontend-prod` / `bvo-backend-prod` once those exist
-(after the first prod promotion — see Section 3). This binding persists
-across redeploys/revisions (Cloud Deploy doesn't reset IAM policy on each
-release), so it's one-time per service unless the service itself gets
-deleted and recreated.
+Do the same for **each additional environment, once its services first
+exist** — `bvo-frontend-pre-prod` / `bvo-backend-pre-prod` (after the first
+merge-to-`main` build) and `bvo-frontend-prod` / `bvo-backend-prod` (after
+the first prod promotion, Section 3):
+
+```
+gcloud run services add-iam-policy-binding bvo-frontend-pre-prod \
+  --region=REGION --member=allUsers --role=roles/run.invoker
+
+gcloud run services add-iam-policy-binding bvo-backend-pre-prod \
+  --region=REGION --member=allUsers --role=roles/run.invoker
+```
+
+This binding persists across redeploys/revisions (Cloud Deploy doesn't reset
+IAM policy on each release), so it's one-time per service — but a brand-new
+environment (or a service that gets deleted and recreated) comes up **private
+and returns 403** until you add it. This is not captured in the Skaffold
+manifests, so it's a manual step every time a new environment's services are
+created.
+
+If your org enforces Domain Restricted Sharing
+(`iam.allowedPolicyMemberDomains`), the `allUsers` binding is rejected; expose
+the service another way (external HTTPS load balancer, or IAP) instead.
 
 ## 2.6 Wire up GCS storage (Studio audio files)
 
