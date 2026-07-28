@@ -75,6 +75,8 @@ spec:
                 secretKeyRef:
                   name: bvo-redis-url-staging
                   key: "latest"
+            - name: ELEVEN_LABS_API_BASE_URL
+              value: "https://api.elevenlabs.io"
             # Canonical application variable used by both the ElevenLabs SDK
             # and ElevenLabsClientService. The Secret Manager resource name
             # remains GCP-specific; only its environment-variable mapping is
@@ -93,6 +95,14 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: bvo-jwt-secret-staging
+                  key: "latest"
+            # Keep admin-setting encryption independent from JWT signing so
+            # SMTP, Stripe, and other encrypted settings survive deployments
+            # and future JWT secret rotations.
+            - name: SETTINGS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-settings-encryption-key-staging
                   key: "latest"
             # STRIPE_SECRET_KEY intentionally not injected here — Stripe
             # key handling is managed inside the app itself, not via this
