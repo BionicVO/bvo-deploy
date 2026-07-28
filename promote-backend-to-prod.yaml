@@ -26,7 +26,7 @@ steps:
         gcloud deploy releases describe "${_RELEASE}" \
           --delivery-pipeline="${_DELIVERY_PIPELINE}" \
           --region="${_REGION}" \
-          --format='value(buildArtifacts.filter(a.image:"backend").image)' \
+          --format='value(buildArtifacts[0].tag)' \
           > /workspace/backend_image.txt
         cat /workspace/backend_image.txt
 
