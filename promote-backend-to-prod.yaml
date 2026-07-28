@@ -72,7 +72,6 @@ steps:
 
 substitutions:
   _REGION: us-central1
-  _REPO: bvo-images
   _DELIVERY_PIPELINE: bvo-backend-pipeline
 
 options:

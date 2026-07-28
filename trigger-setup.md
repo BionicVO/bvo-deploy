@@ -642,7 +642,7 @@ command):
 #    (promote-backend-to-prod.yaml runs prod migrations against the SAME
 #    image that was deployed to staging, then calls `releases promote`):
 gcloud builds submit --no-source --config=promote-backend-to-prod.yaml \
-  --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline
+  --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_DELIVERY_PIPELINE=bvo-backend-pipeline
 
 # 2. approve the pending prod rollout (or click Approve in the Cloud Deploy console):
 gcloud deploy rollouts approve <rollout-id> \
