@@ -43,7 +43,7 @@ spec:
             # this manifest) — so CORS stays locked to this explicit list
             # here rather than accidentally opening wide.
             - name: CLIENT_URLS
-              value: "https://bvo-frontend-prod-516740748317.us-central1.run.app"
+              value: "https://bvo-frontend-prod-516740748317.us-central1.run.app,https://www.bionicvo.ai"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST
@@ -76,15 +76,14 @@ spec:
                 secretKeyRef:
                   name: bvo-redis-url-prod
                   key: "latest"
-            # Required at startup — ElevenLabsClientService.js constructs
-            # the ElevenLabs SDK client at module import time (not lazily),
-            # and the SDK itself reads this exact env var name if no key is
-            # passed explicitly. Missing this crashes the whole process
-            # before it can bind to PORT, which Cloud Run reports as a
-            # generic "container failed to start and listen on the port"
-            # health-check failure — worth remembering if this env var ever
-            # gets accidentally removed.
-            - name: ELEVENLABS_API_KEY
+            - name: ELEVEN_LABS_API_BASE_URL
+              value: "https://api.elevenlabs.io"
+            # Canonical application variable — elevenlabs.ts reads
+            # ELEVEN_LABS_API_KEY (with underscores). Prod previously mapped this
+            # secret to ELEVENLABS_API_KEY, which the app never read, so voice
+            # generation had no key. Secret resource name is unchanged; only the
+            # env-var mapping is corrected to match the app config.
+            - name: ELEVEN_LABS_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: bvo-elevenlabs-key-prod
@@ -98,6 +97,16 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: bvo-jwt-secret-prod
+                  key: "latest"
+            # Keep admin-setting encryption independent from JWT signing so
+            # SMTP, Stripe, and other encrypted settings survive deployments and
+            # future JWT secret rotations. Must be set BEFORE configuring any
+            # admin_settings, or those settings encrypt under sha256(SECRET) and
+            # won't decrypt once this key is added.
+            - name: SETTINGS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-settings-encryption-key-prod
                   key: "latest"
             # STRIPE_SECRET_KEY intentionally not injected here — Stripe
             # key handling is managed inside the app itself, not via this
