@@ -43,7 +43,7 @@ spec:
             # this manifest) — so CORS stays locked to this explicit list
             # here rather than accidentally opening wide.
             - name: CLIENT_URLS
-              value: "https://bvo-frontend-prod-516740748317.us-central1.run.app,https://www.bionicvo.ai"
+              value: "https://bvo-frontend-prod-516740748317.us-central1.run.app,https://www.bionicvo.ai,https://bionicvo.ai"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST
