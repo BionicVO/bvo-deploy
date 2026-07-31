@@ -48,6 +48,10 @@ spec:
             # service exists).
             - name: CLIENT_URLS
               value: "https://bvo-frontend-pre-prod-516740748317.us-central1.run.app"
+            # Pre-prod shares the staging database and therefore its bucket.
+            # An existing admin_settings.storage row takes precedence.
+            - name: GCP_BUCKET
+              value: "bvo-assets"
             - name: DB_SSL
               value: "true"
             # --- STAGING database (pre-prod validates against staging data) ---
