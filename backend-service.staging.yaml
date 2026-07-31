@@ -43,6 +43,10 @@ spec:
             # the CORS/Network Error in the browser.
             - name: CLIENT_URLS
               value: "https://bvo-frontend-staging-516740748317.us-central1.run.app,https://staging-app.bionicvo.ai"
+            # Seeds the storage admin setting for a new staging database.
+            # An existing admin_settings.storage row takes precedence.
+            - name: GCP_BUCKET
+              value: "bvo-assets"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST

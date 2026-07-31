@@ -533,8 +533,9 @@ the service another way (external HTTPS load balancer, or IAP) instead.
 ## 2.6 Wire up GCS storage (Studio audio files)
 
 The Render deployment stored uploaded audio (Speeches, Actors, Profiles,
-StudioExports, AudioWatermarks) either on local disk or in an existing GCS
-bucket (`bvo-assets`). Cloud Run's local filesystem is ephemeral and
+StudioExports, AudioWatermarks) either on local disk or in GCS. Staging and
+pre-production use `bvo-assets`; production uses the isolated
+`bvo-assets-prod` bucket. Cloud Run's local filesystem is ephemeral and
 per-revision, so anything relying on local storage disappears on every
 redeploy — this is what caused Studio audio 400/404s on staging.
 
@@ -547,6 +548,15 @@ once a `storage` settings row exists (which it does, post-migration from
 Render), env vars are ignored entirely. Switching providers requires an
 authenticated call to the admin API, not a Cloud Run manifest change.
 
+The manifests set `GCP_BUCKET` to the correct environment default, but always
+verify the persisted admin setting after deploying:
+
+| Environment | Bucket |
+| --- | --- |
+| Staging | `bvo-assets` |
+| Pre-production (shares staging data) | `bvo-assets` |
+| Production | `bvo-assets-prod` |
+
 1. **Grant the Cloud Run service account bucket + signing permissions.**
    `bvo-backend-staging` runs as the default compute service account
    (`PROJECT_NUMBER-compute@developer.gserviceaccount.com` — confirm via
@@ -556,8 +566,13 @@ authenticated call to the admin API, not a Cloud Run manifest change.
    falls back to Application Default Credentials, which needs two grants:
 
    ```
-   # Read/write objects in the bucket
+   # Staging and pre-production
    gcloud storage buckets add-iam-policy-binding gs://bvo-assets \
+     --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+     --role="roles/storage.objectAdmin"
+
+   # Production
+   gcloud storage buckets add-iam-policy-binding gs://bvo-assets-prod \
      --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
      --role="roles/storage.objectAdmin"
 

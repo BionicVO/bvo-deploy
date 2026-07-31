@@ -44,6 +44,10 @@ spec:
             # here rather than accidentally opening wide.
             - name: CLIENT_URLS
               value: "https://bvo-frontend-prod-516740748317.us-central1.run.app,https://www.bionicvo.ai,https://bionicvo.ai"
+            # Seeds the storage admin setting for a new production database.
+            # An existing admin_settings.storage row takes precedence.
+            - name: GCP_BUCKET
+              value: "bvo-assets-prod"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST
