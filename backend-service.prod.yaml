@@ -35,6 +35,8 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "production"
+            - name: BETA_CREDIT_SIMULATION_ENABLED
+              value: "false"
             # bootstrap.ts builds its CORS allowlist from CLIENT_URLS (falls
             # back to APP_URL, comma-separated). Note: bootstrap.ts also
             # skips the allowlist entirely (corsOptions = {}) when
