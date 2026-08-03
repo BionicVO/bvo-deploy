@@ -53,6 +53,18 @@ spec:
               value: "https://www.bionicvo.ai"
             - name: DB_SSL
               value: "true"
+            # Production-only, admin-triggered actor conflict promotion. The
+            # referenced staging credential has column-level SELECT access to
+            # actor identity and usagePreferences only.
+            - name: ACTOR_CONFLICT_PROMOTION_ENABLED
+              value: "true"
+            - name: STAGING_DB_SSL
+              value: "true"
+            - name: STAGING_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-actor-conflict-staging-url-prod
+                  key: "latest"
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
