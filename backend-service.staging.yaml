@@ -43,6 +43,14 @@ spec:
             # the CORS/Network Error in the browser.
             - name: CLIENT_URLS
               value: "https://bvo-frontend-staging-516740748317.us-central1.run.app,https://staging-app.bionicvo.ai"
+            # Canonical staging frontend origin used for Stripe checkout
+            # success/cancel redirects and customer-facing application links.
+            # APP_URL remains aligned as a compatibility fallback for callers
+            # that do not yet read CLIENT_APP_URL.
+            - name: CLIENT_APP_URL
+              value: "https://staging-app.bionicvo.ai"
+            - name: APP_URL
+              value: "https://staging-app.bionicvo.ai"
             - name: DB_SSL
               value: "true"
             - name: DB_HOST
