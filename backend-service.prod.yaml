@@ -37,6 +37,10 @@ spec:
               value: "production"
             - name: BETA_CREDIT_SIMULATION_ENABLED
               value: "false"
+            # Master kill switch. Per-user approval and expiration are still
+            # required before any production checkout can use BYPASS mode.
+            - name: ENABLE_PRODUCTION_PAYMENT_BYPASS
+              value: "true"
             # bootstrap.ts builds its CORS allowlist from CLIENT_URLS (falls
             # back to APP_URL, comma-separated). Note: bootstrap.ts also
             # skips the allowlist entirely (corsOptions = {}) when
