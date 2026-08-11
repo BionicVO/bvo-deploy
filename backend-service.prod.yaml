@@ -35,6 +35,8 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "production"
+            - name: ENABLE_ACTOR_HIRED_EMAILS
+              value: "true"
             - name: BETA_CREDIT_SIMULATION_ENABLED
               value: "false"
             # Master kill switch. Per-user approval and expiration are still

@@ -36,6 +36,8 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "staging"
+            - name: ENABLE_ACTOR_HIRED_EMAILS
+              value: "false"
             # bootstrap.ts builds its CORS allowlist from CLIENT_URLS (falls
             # back to APP_URL, comma-separated) — with neither set here,
             # `origin` was an empty array and cors() rejected every request
