@@ -32,7 +32,7 @@ spec:
             - containerPort: 8080
           env:
             - name: API_BASE_URL
-              value: "https://bvo-backend-staging-516740748317.us-central1.run.app"
+              value: "https://bvo-backend-staging-d5ijitzpuq-uc.a.run.app"
           resources:
             limits:
               cpu: "1"

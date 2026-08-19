@@ -51,7 +51,7 @@ spec:
             # this manifest) — so CORS stays locked to this explicit list
             # here rather than accidentally opening wide.
             - name: CLIENT_URLS
-              value: "https://bvo-frontend-prod-516740748317.us-central1.run.app,https://www.bionicvo.ai,https://bionicvo.ai"
+              value: "https://bvo-frontend-prod-d5ijitzpuq-uc.a.run.app,https://www.bionicvo.ai,https://bionicvo.ai"
             # Seeds durable production storage when the storage admin setting
             # does not exist yet. The persisted admin setting takes precedence.
             - name: GCP_BUCKET

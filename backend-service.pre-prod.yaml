@@ -49,7 +49,7 @@ spec:
             # frontend origin (confirm the URL once the pre-prod frontend
             # service exists).
             - name: CLIENT_URLS
-              value: "https://bvo-frontend-pre-prod-516740748317.us-central1.run.app"
+              value: "https://bvo-frontend-pre-prod-d5ijitzpuq-uc.a.run.app"
             # Pre-production shares the staging database and storage bucket.
             # The persisted admin setting takes precedence once it exists.
             - name: GCP_BUCKET

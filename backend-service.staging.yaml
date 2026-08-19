@@ -44,7 +44,7 @@ spec:
             # from the frontend, regardless of ENV. This is what was causing
             # the CORS/Network Error in the browser.
             - name: CLIENT_URLS
-              value: "https://bvo-frontend-staging-516740748317.us-central1.run.app,https://staging-app.bionicvo.ai"
+              value: "https://bvo-frontend-staging-d5ijitzpuq-uc.a.run.app,https://staging-app.bionicvo.ai"
             # Seeds durable staging storage when the storage admin setting
             # does not exist yet. The persisted admin setting takes precedence.
             - name: GCP_BUCKET
