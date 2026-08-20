@@ -641,6 +641,69 @@ admin setting after every environment bootstrap:
    simultaneously) — otherwise requests from that origin will hit the same
    CORS rejection described in Section 2's CORS fix.
 
+## 2.7 The backend test gate (both `^staging$` and `^main$`)
+
+`cloudbuild-backend.yaml` runs two **blocking** test steps between `compile`
+and `build-image`. Neither has `allowFailure`, so a failing test or a coverage
+regression fails the build before an image is built or pushed:
+
+```
+install → compile → unit-test → start-test-postgres → integration-test
+        → stop-test-postgres → publish-coverage → build-image → …
+```
+
+Both apply to the staging and pre-prod triggers alike — they're the same build
+config, so there is nothing extra to configure per trigger.
+
+**Why the integration step exists.** The MySQL→Postgres cutover broke the
+entire admin area's raw SQL — `?` placeholders, camelCase identifier casing,
+`GROUP_CONCAT`, `SUM(bool)` — and *every build stayed green*, because raw SQL
+isn't type-checked and nothing ran it against a server. The integration step
+runs the real migrations and the real admin queries against a throwaway
+PostgreSQL, so that class of regression fails CI instead of production.
+
+**How the throwaway database is wired.** `start-test-postgres` launches
+`postgres:16-alpine` detached with `--network=cloudbuild`. Every Cloud Build
+step is already attached to that network, so the later `node:20` step reaches
+it by container name at `bvo-test-postgres:5432` — no port publishing, no host
+networking, and nothing to clean up if a build dies (the worker is ephemeral;
+`stop-test-postgres` is just tidiness). The data directory is a tmpfs with
+`fsync=off`, since the cluster lives for one build.
+
+The suite refuses to run against any database whose name lacks a `test`
+marker, so a mistyped `TEST_DATABASE_URL` cannot point it at staging or prod.
+There is no Cloud SQL involvement and no VPC connector needed for this step.
+
+**Coverage.** `unit-test` runs `npm run test:coverage`, which enforces two sets
+of c8 thresholds — a whole-codebase floor and a much stricter one for the SQL
+shim, crypto, config, and auth helpers. `publish-coverage` then uploads the
+HTML report to `gs://$_COVERAGE_BUCKET/backend/$SHORT_SHA/`.
+
+`_COVERAGE_BUCKET` is **optional and defaults to empty**, in which case the
+step prints a note and exits 0 — the gate never depends on it. To turn it on,
+add the substitution to both backend triggers (remember: `update github
+--update-substitutions` fails on 2nd-gen triggers, so use the export/edit/import
+round-trip described in Section 2), and grant the build service account
+`roles/storage.objectAdmin` on the bucket:
+
+```
+gcloud storage buckets create gs://bvo-coverage --location=REGION
+gcloud storage buckets add-iam-policy-binding gs://bvo-coverage \
+  --member=serviceAccount:bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/storage.objectAdmin
+```
+
+**Blocking the merge, not just the deploy.** These steps stop a bad commit from
+reaching Cloud Run, but on their own they don't stop it being merged. Requiring
+the Cloud Build check in GitHub branch protection on `staging` and `main` is a
+separate, manual, repo-admin step — see `docs/TESTING.md` in `bvo-api` for the
+exact settings and the `gh api` equivalent.
+
+**Frontend note.** `cloudbuild-frontend.yaml`'s lint step keeps its
+`allowFailure` (a backlog of pre-existing errors). `cloudbuild-backend.yaml`
+has no lint step at all — `bvo-api` has no `lint` script, only a `lint-staged`
+pre-commit hook. Making either blocking is a separate decision.
+
 ## 3. Promote staging → prod
 
 Every push to the `staging` branch auto-deploys both services to their
