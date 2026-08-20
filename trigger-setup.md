@@ -699,10 +699,12 @@ the Cloud Build check in GitHub branch protection on `staging` and `main` is a
 separate, manual, repo-admin step — see `docs/TESTING.md` in `bvo-api` for the
 exact settings and the `gh api` equivalent.
 
-**Frontend note.** `cloudbuild-frontend.yaml`'s lint step keeps its
-`allowFailure` (a backlog of pre-existing errors). `cloudbuild-backend.yaml`
-has no lint step at all — `bvo-api` has no `lint` script, only a `lint-staged`
-pre-commit hook. Making either blocking is a separate decision.
+**Lint stays non-blocking, in both builds.** `cloudbuild-frontend.yaml` and
+`cloudbuild-backend.yaml` both run lint with `allowFailure: true` — the output
+is visible but cannot fail a build, because each repo has a backlog of
+pre-existing errors (~171 in `bvo-new`, ~194 in `bvo-api`, the latter mostly
+`no-unsafe-declaration-merging` from the TypeORM entity pattern). Making either
+a real gate is a separate decision that needs those cleared first.
 
 ## 3. Promote staging → prod
 
