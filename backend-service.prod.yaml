@@ -70,6 +70,11 @@ spec:
               value: "true"
             - name: STAGING_DB_SSL
               value: "true"
+            # Actor promotion downloads media through staging's public media
+            # endpoints, then writes provider-independent keys into production
+            # storage before updating the production actor record.
+            - name: STAGING_API_BASE_URL
+              value: "https://bvo-backend-staging-d5ijitzpuq-uc.a.run.app"
             - name: STAGING_DATABASE_URL
               valueFrom:
                 secretKeyRef:
