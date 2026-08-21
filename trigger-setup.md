@@ -708,6 +708,25 @@ a real gate is a separate decision that needs those cleared first.
 
 ## 3. Promote staging → prod
 
+Actor imports and profile promotions that include an avatar or sample audio
+also require `STAGING_API_BASE_URL` on the production backend. Set it to the
+staging backend origin (without a trailing `/api/v1` is fine). The production
+API downloads each actor's media through the staging media endpoints, writes a
+private content-addressed object into production storage, and only then updates
+the production database. A missing or unreadable staging file aborts the
+promotion instead of persisting a broken URL.
+
+For the first rollout, deploy and verify the backend avatar/sample endpoints in
+staging, deploy the production backend, and only then deploy the production
+frontend that routes actor media through those endpoints. After deployment run:
+
+```
+npm run audit:actor-media -- https://bvo-backend-prod-d5ijitzpuq-uc.a.run.app
+```
+
+The audit checks every advertised avatar and sample with a one-byte range
+request and exits non-zero if any endpoint is unavailable.
+
 Every push to the `staging` branch auto-deploys both services to their
 respective staging Cloud Run targets (see the `create-release` step in
 each `cloudbuild-*.yaml`). Getting a release to prod is a two-step,
