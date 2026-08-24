@@ -35,6 +35,13 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-pre-prod-d5ijitzpuq-uc.a.run.app"
+            # Gates analytics (Google Tag Manager + Meta Pixel). The frontend only
+            # loads tags when this reads exactly "prod" — see
+            # bvo-new/src/lib/analytics/bootstrap.ts. pre-prod runs against the
+            # staging database, so its traffic must never reach the prod GA4
+            # property or the Meta Pixel.
+            - name: APP_ENV
+              value: "pre-prod"
           resources:
             limits:
               cpu: "1"

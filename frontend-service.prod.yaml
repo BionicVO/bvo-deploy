@@ -33,6 +33,13 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-prod-d5ijitzpuq-uc.a.run.app"
+            # Gates analytics (Google Tag Manager + Meta Pixel). This is the ONLY
+            # environment where the frontend loads tags — the check is an exact
+            # match on "prod" (see bvo-new/src/lib/analytics/bootstrap.ts), and it
+            # fails closed, so a typo here means prod goes untracked rather than
+            # staging polluting the GA4 property.
+            - name: APP_ENV
+              value: "prod"
           resources:
             limits:
               cpu: "1"

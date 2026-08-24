@@ -33,6 +33,13 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-staging-d5ijitzpuq-uc.a.run.app"
+            # Gates analytics (Google Tag Manager + Meta Pixel). The frontend only
+            # loads tags when this reads exactly "prod" — see
+            # bvo-new/src/lib/analytics/bootstrap.ts. Served to the SPA through the
+            # same /env-config.js route as API_BASE_URL, so one promoted image can
+            # track on prod and stay silent here without a rebuild.
+            - name: APP_ENV
+              value: "staging"
           resources:
             limits:
               cpu: "1"
