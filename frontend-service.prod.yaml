@@ -40,6 +40,8 @@ spec:
             # staging polluting the GA4 property.
             - name: APP_ENV
               value: "prod"
+            - name: PUBLIC_SITE_URL
+              value: "https://bionicvo.ai"
           resources:
             limits:
               cpu: "1"

@@ -40,6 +40,8 @@ spec:
             # track on prod and stay silent here without a rebuild.
             - name: APP_ENV
               value: "staging"
+            - name: PUBLIC_SITE_URL
+              value: "https://staging-app.bionicvo.ai"
           resources:
             limits:
               cpu: "1"
