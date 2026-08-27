@@ -35,6 +35,10 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-pre-prod-516740748317.us-central1.run.app"
+            - name: APP_ENV
+              value: "pre-prod"
+            - name: PUBLIC_SITE_URL
+              value: "https://bvo-frontend-pre-prod-516740748317.us-central1.run.app"
           resources:
             limits:
               cpu: "1"

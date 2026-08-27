@@ -50,7 +50,7 @@ spec:
             # customer-facing email links. CLIENT_URLS is a CORS allowlist
             # and must not be used as a single URL.
             - name: CLIENT_APP_URL
-              value: "https://www.bionicvo.ai"
+              value: "https://bionicvo.ai"
             - name: DB_SSL
               value: "true"
             # Production-only, admin-triggered actor conflict promotion. The

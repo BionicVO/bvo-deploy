@@ -33,6 +33,10 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-prod-516740748317.us-central1.run.app"
+            - name: APP_ENV
+              value: "prod"
+            - name: PUBLIC_SITE_URL
+              value: "https://bionicvo.ai"
           resources:
             limits:
               cpu: "1"
