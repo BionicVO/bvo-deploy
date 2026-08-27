@@ -142,6 +142,19 @@ spec:
                 secretKeyRef:
                   name: bvo-settings-encryption-key-prod
                   key: "latest"
+            # Zendesk server-to-server OAuth. Access tokens are short-lived and
+            # renewed by the API; the confidential client secret stays in Secret
+            # Manager. The existing DB-backed API token remains available as a
+            # rollback path until the production OAuth connection is verified.
+            - name: ZENDESK_OAUTH_CLIENT_ID
+              value: "bionicvo_production_api"
+            - name: ZENDESK_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-zendesk-oauth-client-secret-prod
+                  key: "latest"
+            - name: ZENDESK_OAUTH_SCOPE
+              value: "tickets:write ticket_attachments:write users:read"
             # STRIPE_SECRET_KEY intentionally not injected here — Stripe
             # key handling is managed inside the app itself, not via this
             # Cloud Run manifest/Secret Manager.
