@@ -20,7 +20,8 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "0"
+        # Keep one request-billed instance warm to avoid admin login cold-start timeouts.
+        autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "5"
         run.googleapis.com/vpc-access-connector: bvo-vpc-connector
         run.googleapis.com/vpc-access-egress: private-ranges-only
