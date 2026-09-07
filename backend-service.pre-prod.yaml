@@ -28,12 +28,25 @@ spec:
         autoscaling.knative.dev/maxScale: "5"
         run.googleapis.com/vpc-access-connector: bvo-vpc-connector
         run.googleapis.com/vpc-access-egress: private-ranges-only
+        # Cold starts on this image are CPU-bound; the boost shortens the window in which the
+        # startup probe is waiting on a container that has not bound its port yet.
+        run.googleapis.com/startup-cpu-boost: "true"
     spec:
       containerConcurrency: 80
       containers:
         - image: backend
           ports:
             - containerPort: 3000
+          # Explicit startup probe against the SHALLOW liveness endpoint, replacing Cloud Run's
+          # default single 240s TCP check.
+          # Do not repoint at /apiHealthCheck/ready — see backend-service.prod.yaml.
+          startupProbe:
+            httpGet:
+              path: /api/v1/apiHealthCheck
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
           env:
             # PORT is deliberately not set here — Cloud Run reserves that
             # name and injects it automatically to match containerPort
@@ -56,6 +69,11 @@ spec:
               value: "bvo-assets"
             - name: DB_SSL
               value: "true"
+            # Per-instance Postgres pool ceiling (PostgresqlConnection.ts); without it
+            # node-postgres defaults to 10. This shares the staging database, so the cap is
+            # sized for both environments running at maxScale simultaneously.
+            - name: DB_POOL_MAX
+              value: "3"
             # --- STAGING database (pre-prod validates against staging data) ---
             - name: DB_HOST
               valueFrom:

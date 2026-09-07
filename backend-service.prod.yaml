@@ -20,15 +20,46 @@ spec:
     metadata:
       annotations:
         autoscaling.knative.dev/minScale: "1"
-        autoscaling.knative.dev/maxScale: "20"
+        # Lowered from 20 because the ceiling is the DATABASE, not Cloud Run. Every instance
+        # holds up to DB_POOL_MAX connections, and 20 x 5 = 100 would consume the whole Cloud SQL
+        # max_connections on its own. At containerConcurrency 80 this still admits ~800
+        # concurrent requests. Raise this ONLY together with DB_POOL_MAX and a confirmed
+        # max_connections — see docs/AUTOSCALING_TASK.md for the budget.
+        autoscaling.knative.dev/maxScale: "10"
         run.googleapis.com/vpc-access-connector: bvo-vpc-connector
         run.googleapis.com/vpc-access-egress: private-ranges-only
+        # Cold starts on this image are CPU-bound; the boost shortens the window in which the
+        # startup probe is waiting on a container that has not bound its port yet.
+        run.googleapis.com/startup-cpu-boost: "true"
+        # Always-allocated CPU. The backend runs two background timers — the outbox relay
+        # (15s) and the database reconnect backoff in DatabaseBootstrap.ts — and with the
+        # default request-scoped throttling both are starved between requests, which would
+        # stall recovery from a database drop precisely when it matters. This is the one
+        # setting here that increases the prod bill.
+        run.googleapis.com/cpu-throttling: "false"
     spec:
       containerConcurrency: 80
       containers:
         - image: backend
           ports:
             - containerPort: 3000
+          # Explicit startup probe. The Cloud Run default is a single TCP check with a 240s
+          # deadline, which is how the 2026-09-01 outage presented: DEADLINE_EXCEEDED with no
+          # indication of why. This polls the SHALLOW liveness endpoint every 5s for ~2 minutes.
+          #
+          # /api/v1/apiHealthCheck is unconditionally 200 once the process listens and does NOT
+          # touch the database. Do not repoint this at /apiHealthCheck/ready — a probe wired to
+          # database readiness rebuilds the exact crash loop this manifest change removes.
+          #
+          # There is deliberately no livenessProbe: once the port binds independently of the
+          # database, a liveness probe only adds a new way to kill healthy containers.
+          startupProbe:
+            httpGet:
+              path: /api/v1/apiHealthCheck
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
           env:
             # PORT is deliberately not set here — Cloud Run reserves that
             # name and injects it automatically to match containerPort
@@ -63,6 +94,19 @@ spec:
               value: "https://bionicvo.ai"
             - name: DB_SSL
               value: "true"
+            # Per-instance Postgres pool ceiling (PostgresqlConnection.ts). Without this,
+            # node-postgres defaults to 10 per instance and nothing bounds total connections.
+            # Budget against an assumed max_connections of 100. The only prod consumers are this
+            # service and bvo-migrate-prod — the document/audition worker Jobs are staging-only
+            # and hit the staging database:
+            #   backend   10 instances x 5 = 50
+            #   bvo-migrate-prod       x 2 =  2   (capped in scripts/run-migrations.ts)
+            #                              ----
+            #                                52, leaving headroom for the superuser reserve,
+            #                                psql sessions and admin tooling.
+            # Confirm the real ceiling with `SHOW max_connections;` and re-derive if it differs.
+            - name: DB_POOL_MAX
+              value: "5"
             # Production-only, admin-triggered actor conflict promotion. The
             # referenced staging credential has column-level SELECT access to
             # actor identity and usagePreferences only.
@@ -150,4 +194,8 @@ spec:
           resources:
             limits:
               cpu: "1"
-              memory: 512Mi
+              # Raised from 512Mi: bootstrap.ts sets a 50mb body-parser limit and
+              # containerConcurrency is 80, so a burst of large uploads could OOM-kill the
+              # container. An OOM kill during boot is indistinguishable in the logs from the
+              # startup-probe failure this change is meant to eliminate.
+              memory: 1Gi
