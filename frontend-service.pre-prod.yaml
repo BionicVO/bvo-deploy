@@ -51,9 +51,18 @@ spec:
             # into the production property.
             - name: GA4_MEASUREMENT_ID
               value: ""
-            # Dry-run is a staging-only QA aid; see frontend-service.staging.yaml.
+            # Runs the full analytics pipeline — consent, page views, every event —
+            # while loadScript() in bvo-new/src/lib/analytics/gtagBridge.ts refuses to
+            # inject any third-party script outside live prod, so nothing reaches
+            # Google or Meta.
+            #
+            # On here as well as staging because pre-prod is the last stop before the
+            # manual approval gate on frontend-prod, and it runs the same promoted
+            # image. Without this the environment is entirely silent — no banner, no
+            # dataLayer, nothing to verify — so the final check before prod would be
+            # no check at all.
             - name: ANALYTICS_DRY_RUN
-              value: ""
+              value: "true"
           resources:
             limits:
               cpu: "1"
