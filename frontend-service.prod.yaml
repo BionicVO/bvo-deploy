@@ -33,8 +33,8 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-prod-d5ijitzpuq-uc.a.run.app"
-            # Gates analytics (Google Tag Manager + Meta Pixel). This is the ONLY
-            # environment where the frontend loads tags — the check is an exact
+            # Gates analytics (GA4, Google Tag Manager and the Meta Pixel). This is the
+            # ONLY environment where the frontend loads tags — the check is an exact
             # match on "prod" (see bvo-new/src/lib/analytics/bootstrap.ts), and it
             # fails closed, so a typo here means prod goes untracked rather than
             # staging polluting the GA4 property.
@@ -42,6 +42,22 @@ spec:
               value: "prod"
             - name: PUBLIC_SITE_URL
               value: "https://bionicvo.ai"
+            # GA4 measurement ID for the production property.
+            #
+            # TODO: set this to the real "G-…" once the GA4 property and web data
+            # stream exist. It is intentionally EMPTY until then: GA4 stays off rather
+            # than reporting to a property that does not exist. The client also drops
+            # anything not matching /^G-[A-Z0-9]{4,}$/, so a malformed value disables
+            # GA4 rather than being interpolated into a script URL.
+            #
+            # Injected here rather than baked into the bundle so the same promoted
+            # image can report per environment. Not a secret — a measurement ID is
+            # public by design, visible in any page's network tab.
+            - name: GA4_MEASUREMENT_ID
+              value: ""
+            # Dry-run is a staging-only QA aid; see frontend-service.staging.yaml.
+            - name: ANALYTICS_DRY_RUN
+              value: ""
           resources:
             limits:
               cpu: "1"
