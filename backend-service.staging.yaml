@@ -60,6 +60,12 @@ spec:
             # the CORS/Network Error in the browser.
             - name: CLIENT_URLS
               value: "https://bvo-frontend-staging-d5ijitzpuq-uc.a.run.app,https://staging-app.bionicvo.ai"
+            # Stripe checkout and billing portal redirects require a single
+            # absolute frontend URL; CLIENT_URLS is only the CORS allowlist.
+            - name: CLIENT_APP_URL
+              value: "https://staging-app.bionicvo.ai"
+            - name: APP_URL
+              value: "https://staging-app.bionicvo.ai"
             # Seeds durable staging storage when the storage admin setting
             # does not exist yet. The persisted admin setting takes precedence.
             - name: GCP_BUCKET
