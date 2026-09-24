@@ -635,7 +635,7 @@ admin setting after every environment bootstrap:
    IAM grants and the provider switch worked end to end. Then open an
    affected Studio project and confirm audio actually plays.
 
-5. **If serving from a custom domain** (`staging-app.bionicvo.us` instead
+5. **If serving from a custom domain** (`staging-app.bionicvo.ai` instead
    of the raw Cloud Run URL), add it to the backend's `CLIENT_URLS` env var
    in `backend-service.staging.yaml` (comma-separated if both need to work
    simultaneously) — otherwise requests from that origin will hit the same
