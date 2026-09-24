@@ -35,7 +35,7 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-pre-prod-d5ijitzpuq-uc.a.run.app"
-            # Gates analytics (Google Tag Manager + Meta Pixel). The frontend only
+            # Gates analytics (GA4, Google Tag Manager and the Meta Pixel). The frontend only
             # loads tags when this reads exactly "prod" — see
             # bvo-new/src/lib/analytics/bootstrap.ts. pre-prod runs against the
             # staging database, so its traffic must never reach the prod GA4
@@ -44,6 +44,25 @@ spec:
               value: "pre-prod"
             - name: PUBLIC_SITE_URL
               value: "https://bvo-frontend-pre-prod-516740748317.us-central1.run.app"
+            # GA4 measurement ID. Empty on purpose: APP_ENV gates analytics to prod
+            # only, so nothing here would load anyway — but keeping the variable
+            # declared and blank makes the intent explicit and means a value pasted
+            # into the wrong file cannot silently start reporting non-prod traffic
+            # into the production property.
+            - name: GA4_MEASUREMENT_ID
+              value: ""
+            # Runs the full analytics pipeline — consent, page views, every event —
+            # while loadScript() in bvo-new/src/lib/analytics/gtagBridge.ts refuses to
+            # inject any third-party script outside live prod, so nothing reaches
+            # Google or Meta.
+            #
+            # On here as well as staging because pre-prod is the last stop before the
+            # manual approval gate on frontend-prod, and it runs the same promoted
+            # image. Without this the environment is entirely silent — no banner, no
+            # dataLayer, nothing to verify — so the final check before prod would be
+            # no check at all.
+            - name: ANALYTICS_DRY_RUN
+              value: "true"
           resources:
             limits:
               cpu: "1"

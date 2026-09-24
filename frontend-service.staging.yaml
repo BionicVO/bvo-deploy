@@ -33,7 +33,7 @@ spec:
           env:
             - name: API_BASE_URL
               value: "https://bvo-backend-staging-d5ijitzpuq-uc.a.run.app"
-            # Gates analytics (Google Tag Manager + Meta Pixel). The frontend only
+            # Gates analytics (GA4, Google Tag Manager and the Meta Pixel). The frontend only
             # loads tags when this reads exactly "prod" — see
             # bvo-new/src/lib/analytics/bootstrap.ts. Served to the SPA through the
             # same /env-config.js route as API_BASE_URL, so one promoted image can
@@ -42,6 +42,20 @@ spec:
               value: "staging"
             - name: PUBLIC_SITE_URL
               value: "https://staging-app.bionicvo.ai"
+            # GA4 measurement ID. Empty on purpose: APP_ENV gates analytics to prod
+            # only, so nothing here would load anyway — but keeping the variable
+            # declared and blank makes the intent explicit and means a value pasted
+            # into the wrong file cannot silently start reporting non-prod traffic
+            # into the production property.
+            - name: GA4_MEASUREMENT_ID
+              value: ""
+            # Runs the full analytics pipeline — consent, page views, every event — but
+            # loadScript() in bvo-new/src/lib/analytics/gtagBridge.ts refuses to inject
+            # any third-party script outside live prod, so nothing reaches Google or
+            # Meta. Lets staging be QA'd without a staging GA4 property and without
+            # staging data landing in one. Ignored on prod.
+            - name: ANALYTICS_DRY_RUN
+              value: "true"
           resources:
             limits:
               cpu: "1"
