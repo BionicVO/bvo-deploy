@@ -53,6 +53,10 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "pre-prod"
+            - name: EXTERNAL_ACTOR_BOOKINGS_ENABLED
+              value: "true"
+            - name: EXTERNAL_ACTOR_BOOKING_ORGANIZATION_IDS
+              value: "org_665c2f8a5e0b"
             - name: ACTOR_JOB_NOTICES_ENABLED
               value: "true"
             - name: ENABLE_ACTOR_JOB_NOTIFICATIONS
