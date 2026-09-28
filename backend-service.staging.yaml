@@ -44,7 +44,8 @@ spec:
               port: 3000
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 24
+            # Allow the large API image four minutes to start on a cold instance.
+            failureThreshold: 48
           env:
             # PORT is deliberately not set here — Cloud Run reserves that
             # name and injects it automatically to match containerPort
