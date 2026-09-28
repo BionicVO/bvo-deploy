@@ -68,10 +68,10 @@ spec:
               value: "production"
             - name: ACTOR_JOB_NOTICES_ENABLED
               value: "true"
-              - name: EXTERNAL_ACTOR_BOOKINGS_ENABLED
-                value: "true"
-              - name: EXTERNAL_ACTOR_BOOKING_ORGANIZATION_IDS
-                value: "77af66bdfe9b"
+            - name: EXTERNAL_ACTOR_BOOKINGS_ENABLED
+              value: "true"
+            - name: EXTERNAL_ACTOR_BOOKING_ORGANIZATION_IDS
+              value: "77af66bdfe9b"
             - name: ENABLE_ACTOR_JOB_NOTIFICATIONS
               value: "true"
             - name: ACTOR_JOB_NOTIFICATION_ENVIRONMENT
