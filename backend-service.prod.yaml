@@ -66,6 +66,14 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "production"
+            - name: ACTOR_JOB_NOTICES_ENABLED
+              value: "true"
+            - name: ENABLE_ACTOR_JOB_NOTIFICATIONS
+              value: "true"
+            - name: ACTOR_JOB_NOTIFICATION_ENVIRONMENT
+              value: "production"
+            - name: ACTOR_JOB_NOTIFICATION_TEST_RECIPIENTS
+              value: ""
             - name: ENABLE_ACTOR_HIRED_EMAILS
               value: "true"
             - name: BETA_CREDIT_SIMULATION_ENABLED
