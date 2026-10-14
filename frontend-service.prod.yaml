@@ -43,7 +43,8 @@ spec:
             - name: PUBLIC_SITE_URL
               value: "https://bionicvo.ai"
             # GA4 measurement ID for the production property.
-            #
+            - name: GA4_MEASUREMENT_ID
+              value: "G-94PTWLTB0W"
             # TODO: set this to the real "G-…" once the GA4 property and web data
             # stream exist. It is intentionally EMPTY until then: GA4 stays off rather
             # than reporting to a property that does not exist. The client also drops
