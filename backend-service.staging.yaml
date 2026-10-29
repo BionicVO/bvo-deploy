@@ -52,6 +52,9 @@ spec:
             # above. Setting it manually causes deployment to fail.
             - name: NODE_ENV
               value: "staging"
+            # Private, request-billed reader with zero minimum instances.
+            - name: LEGACY_OCR_URL
+              value: "https://bvo-legacy-ocr-staging-516740748317.us-central1.run.app"
             - name: EXTERNAL_ACTOR_BOOKINGS_ENABLED
               value: "true"
             - name: EXTERNAL_ACTOR_BOOKING_ORGANIZATION_IDS
@@ -155,5 +158,5 @@ spec:
           resources:
             limits:
               cpu: "1"
-              # Local Legacy OCR runs alongside Node; measured above 729 MiB.
-              memory: 2Gi
+              # OCR runs in its own scale-to-zero service, outside the API.
+              memory: 512Mi
