@@ -20,9 +20,12 @@ spec:
   template:
     metadata:
       annotations:
-        # Keep one request-billed instance warm to avoid admin login cold-start timeouts.
+        # Keep one instance warm to avoid admin login cold-start timeouts.
         autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "5"
+        # Preserve the validated recovery configuration after repeated warm-instance
+        # startup failures. CPU remains available between requests (instance billing).
+        run.googleapis.com/cpu-throttling: "false"
         run.googleapis.com/vpc-access-connector: bvo-vpc-connector
         run.googleapis.com/vpc-access-egress: private-ranges-only
         # Cold starts on this image are CPU-bound; the boost shortens the window in which the
