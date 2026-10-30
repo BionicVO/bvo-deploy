@@ -45,17 +45,6 @@ spec:
             # GA4 measurement ID for the production property.
             - name: GA4_MEASUREMENT_ID
               value: "G-94PTWLTB0W"
-            # TODO: set this to the real "G-…" once the GA4 property and web data
-            # stream exist. It is intentionally EMPTY until then: GA4 stays off rather
-            # than reporting to a property that does not exist. The client also drops
-            # anything not matching /^G-[A-Z0-9]{4,}$/, so a malformed value disables
-            # GA4 rather than being interpolated into a script URL.
-            #
-            # Injected here rather than baked into the bundle so the same promoted
-            # image can report per environment. Not a secret — a measurement ID is
-            # public by design, visible in any page's network tab.
-            - name: GA4_MEASUREMENT_ID
-              value: ""
             # Dry-run is a staging-only QA aid; see frontend-service.staging.yaml.
             - name: ANALYTICS_DRY_RUN
               value: ""
