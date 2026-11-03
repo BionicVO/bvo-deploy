@@ -210,4 +210,5 @@ spec:
               # containerConcurrency is 80, so a burst of large uploads could OOM-kill the
               # container. An OOM kill during boot is indistinguishable in the logs from the
               # startup-probe failure this change is meant to eliminate.
-              memory: 1Gi
+              # Allow headroom for FFmpeg video exports alongside the API.
+              memory: 2Gi
