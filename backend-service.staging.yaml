@@ -32,7 +32,8 @@ spec:
         # startup probe is waiting on a container that has not bound its port yet.
         run.googleapis.com/startup-cpu-boost: "true"
     spec:
-      containerConcurrency: 80
+      # Video exports run FFmpeg alongside the API; limit simultaneous requests.
+      containerConcurrency: 4
       containers:
         - image: backend
           ports:
@@ -162,4 +163,4 @@ spec:
             limits:
               cpu: "1"
               # OCR runs in its own scale-to-zero service, outside the API.
-              memory: 512Mi
+              memory: 2Gi
