@@ -140,6 +140,12 @@ spec:
                 secretKeyRef:
                   name: bvo-jwt-secret-staging
                   key: "latest"
+            # Admin provider credentials are encrypted in the shared staging database.
+            - name: SETTINGS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bvo-settings-encryption-key-staging
+                  key: "latest"
             # STRIPE_SECRET_KEY intentionally not injected here — Stripe
             # key handling is managed inside the app itself, not via this
             # Cloud Run manifest/Secret Manager.
