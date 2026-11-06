@@ -5,6 +5,29 @@
 **Tags:** infra, cloud-run, cloud-sql, autoscaling, performance, gcp
 
 ## User story
+
+### November 6, 2026 production capacity review
+
+The November 4 incident produced 53 frontend memory-termination errors. Production request logs peaked at 526 frontend requests in one second. The seven-day backend peak was 8,769 requests in one minute. This supersedes the earlier assumed database ceiling below.
+
+**Frontend.** Regional k6 tests exercised the production image on zero-traffic pre-production tags. Each run ramped from 50 to 530 requests/s in ten seconds, held 530 for a minute, then returned to ten. It fetched HTML, JavaScript, CSS, runtime configuration, the poster, icon, logo, and a 64 KiB video range. The target was zero failed requests, zero unsent iterations, and p95 below two seconds.
+
+| Memory / concurrency | Completed iterations | HTTP errors | Unsent | Overall p95 |
+| --- | ---: | ---: | ---: | ---: |
+| 256 MiB / 100 | 40,399 | 0 | 0 | 57 ms |
+| 512 MiB / 100 | 40,399 | 0 | 0 | 1,020 ms |
+| 512 MiB / 40 | 40,399 | 0 | 0 | 35 ms |
+
+Select 512 MiB / 40, retaining one CPU, a zero warm floor, and ten instances per production revision. The extra memory addresses the observed termination, and lower concurrency limits how many asset responses share one instance. The control also passed the synthetic workload. An initial 512 MiB / 40 run had zero HTTP failures but missed 214 scheduled starts before the generator had enough workers. The repeat used preallocated workers against the same revision. Warmth differed between runs, so the percentile differences are descriptive. The replay does not establish the cause of the original memory growth.
+
+[Control](https://console.cloud.google.com/cloud-build/builds;region=us-central1/8f6d4e31-d718-46f6-8eba-0117b2f1a17f?project=glass-marker-487618-i6) · [Memory only](https://console.cloud.google.com/cloud-build/builds;region=us-central1/02315b44-5678-4467-a99f-0ef11c3636ec?project=glass-marker-487618-i6) · [Selected configuration](https://console.cloud.google.com/cloud-build/builds;region=us-central1/94cf7ae1-aa17-46ff-be6d-46b975c63ace?project=glass-marker-487618-i6)
+
+**Database.** PostgreSQL reported 400 total connections, three superuser reservations and zero ordinary reservations. The production app database peaked at 27 clients and the instance peaked at 28% CPU in the previous week. API PR 363 enforces the configured five connections per application instance and caps the migration job at two. At ten instances, one revision budgets 50 connections. Two overlapping revisions budget 100. Allowing two for one migration plus ten each for one cleanup and one trial-follow-up execution leaves 275 of 397 ordinary slots. Recalculate for additional consumers or concurrent job executions. A read replica, external pooler and larger SQL tier are unnecessary at the measured load.
+
+**Network and cache.** The shared connector is configured for 200–1,000 Mbps. Its highest five-minute outbound and inbound rates were 21.6 and 21.2 Mbps respectively. The production Valkey node reached 15 connected clients, 1.16% memory utilization and zero rejected connections during the same week. Retain the existing sizes.
+
+**Monitoring.** Seven enabled policies cover the revision ceiling, request p95, server errors per minute, Cloud Run CPU and memory, and database connections and CPU. The initial database alert of 60 connections detects growth above one fully scaled revision. Apply the monitoring script with a notification channel resource to connect delivery. [Production dashboard](https://console.cloud.google.com/monitoring/dashboards/builder/8c8ea4d3-2887-4f7e-980c-be473e70f5c4?project=glass-marker-487618-i6)
+
 > As **the platform owner**, I want **the prod backend + frontend to scale up and down
 > with real traffic without exhausting the database or dropping requests**, so that
 > **the site stays fast under load spikes and cheap when idle.**
