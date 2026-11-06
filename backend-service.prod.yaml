@@ -22,7 +22,8 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "1"
+        # Four warm instances passed the recorded 150 requests/s public API burst.
+        autoscaling.knative.dev/minScale: "4"
         # Ten instances per revision, each with a ten-connection database pool.
         autoscaling.knative.dev/maxScale: "10"
         run.googleapis.com/vpc-access-connector: bvo-vpc-connector

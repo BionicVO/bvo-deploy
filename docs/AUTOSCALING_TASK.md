@@ -38,6 +38,9 @@ Select 512 MiB / 40, retaining one CPU, a zero warm floor, and ten instances per
 | 2 / 160 / 12 | 11,649 completed, zero failures and zero unsent, p95 13.5 s. |
 | 4 / 80 / 10 | 11,649 completed, zero failures and zero unsent, p95 582 ms. Slowest response 1.92 s. |
 | 1 / 80 / 8, 15% CPU and 10% concurrency scale-out targets | 11,649 completed, 100 HTTP failures, zero unsent, p95 26.26 s. |
+| 2 / 80 / 10, direct floor comparison | 11,649 completed, zero failures and zero unsent. K6 reported p95 of 2.00 s rounded and failed its strict below-two-seconds threshold. |
+
+**Warm-floor tradeoff.** Four warm instances passed at 582 ms p95 against the same image, pool and concurrency as the two-instance comparison. Over a 30-day month, three additional continuously allocated instances at 1 vCPU and 2 GiB each add approximately $171.07 in on-demand baseline compute before discounts, credits or free tier. The floor only changes billed capacity when those instances would otherwise have scaled away. [Cloud Run pricing](https://cloud.google.com/run/pricing)
 
 The passing four-warm configuration used the regular pool-fixed application image. A separate 480-read rehearsal included an authenticated customer, project wizard, casting and billing, a temporary analytics-only admin login, and three staging-only synthetic auditions. It completed all three phases. The local voice fallback exercises the application and audio storage paths without calling an external voice provider. The four-warm public burst is [recorded in Cloud Build](https://console.cloud.google.com/cloud-build/builds;region=us-central1/ca831f9c-0fc9-460f-9a32-18748927ca33?project=glass-marker-487618-i6). The production warm-floor decision is separate from enforcing the pool limit.
 
