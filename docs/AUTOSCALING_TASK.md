@@ -4,9 +4,7 @@
 **Priority:** High
 **Tags:** infra, cloud-run, cloud-sql, autoscaling, performance, gcp
 
-## User story
-
-### November 6, 2026 production capacity review
+## November 6, 2026 production capacity review
 
 The November 4 incident produced 53 frontend memory-termination errors. Production request logs peaked at 526 frontend requests in one second. The seven-day backend peak was 8,769 requests in one minute. This supersedes the earlier assumed database ceiling below.
 
@@ -26,7 +24,28 @@ Select 512 MiB / 40, retaining one CPU, a zero warm floor, and ten instances per
 
 **Network and cache.** The shared connector is configured for 200–1,000 Mbps. Its highest five-minute outbound and inbound rates were 21.6 and 21.2 Mbps respectively. The production Valkey node reached 15 connected clients, 1.16% memory utilization and zero rejected connections during the same week. Retain the existing sizes.
 
+**Production pool guardrail.** The earlier five-connection example above describes the initial pre-production cap. The production guardrail explicitly selects ten, matching the previous application's actual pg default and the passing four-warm test. A single revision budgets 100. A service-wide ceiling of 20 instances budgets 200 across revisions. Allow 22 for the three scheduled/migration job executions described above. That leaves 175 ordinary PostgreSQL slots. The runtime's 15 s acquire timeout and 10 s idle timeout also apply. A sustained 60-client incident threshold serves as advance notice above the historical peak of 27.
+
+**Backend experiments.** The November 4 spike predominantly fetched the public actor roster and actor avatars. The regional replay uses 45% roster reads, 50% avatar reads and 5% plan reads. It ramps to 150 requests/s over ten seconds and holds that rate for one minute. All candidates use the staging database and a maximum of ten instances. Keep the backend's 300-second service timeout because booking and audition clients explicitly allow 120 seconds. Ordinary API requests in the final replay use the standard 30-second client deadline.
+
+| Warm / concurrency / pool | Benchmark result |
+| --- | --- |
+| 1 / 80 / 5 | Stopped after 59 failed requests and 481 unsent iterations; p95 3.95 s under a 12 s test deadline. |
+| 2 / 12 / 5 | Stopped after 61 failed requests and 102 unsent iterations; p95 256 ms under the same deadline. |
+| 2 / 40 / 8 | 11,649 scheduled iterations completed, zero failures and zero unsent. P95 7.34 s. |
+| 3 / 32 / 8 | 11,649 completed, zero failures and zero unsent. P95 3.70 s. |
+| 1 / 40 / 8, duplicate-read experiment | 11,503 completed, zero HTTP failures, 146 unsent, p95 14.68 s. Exclude this experimental image from production. |
+| 2 / 160 / 12 | 11,649 completed, zero failures and zero unsent, p95 13.5 s. |
+| 4 / 80 / 10 | 11,649 completed, zero failures and zero unsent, p95 582 ms. Slowest response 1.92 s. |
+| 1 / 80 / 8, 15% CPU and 10% concurrency scale-out targets | 11,649 completed, 100 HTTP failures, zero unsent, p95 26.26 s. |
+
+The passing four-warm configuration used the regular pool-fixed application image. A separate 480-read rehearsal included an authenticated customer, project wizard, casting and billing, a temporary analytics-only admin login, and three staging-only synthetic auditions. It completed all three phases. The local voice fallback exercises the application and audio storage paths without calling an external voice provider. The four-warm public burst is [recorded in Cloud Build](https://console.cloud.google.com/cloud-build/builds;region=us-central1/ca831f9c-0fc9-460f-9a32-18748927ca33?project=glass-marker-487618-i6). The production warm-floor decision is separate from enforcing the pool limit.
+
+The third run used 1,500 preallocated virtual users and a 30-second deadline, as did every subsequent run. Cold-start delays are part of the result. The three-warm configuration separately passed 480 authenticated project, casting and billing reads at 2 → 10 → 2 requests/s, with phase p95 of 146 / 106 / 103 ms. A signed-in fixture overlapping the two-warm public burst exceeded its p95 target. The separate authenticated run does not establish simultaneous performance. The repository's staging smoke also verified customer session issuance, project and casting creation, billing access, restrictions, and fixture cleanup. Provider generation was disabled.
+
 **Monitoring.** Seven enabled policies cover the revision ceiling, request p95, server errors per minute, Cloud Run CPU and memory, and database connections and CPU. The initial database alert of 60 connections detects growth above one fully scaled revision. Apply the monitoring script with a notification channel resource to connect delivery. [Production dashboard](https://console.cloud.google.com/monitoring/dashboards/builder/8c8ea4d3-2887-4f7e-980c-be473e70f5c4?project=glass-marker-487618-i6)
+
+## Original user story
 
 > As **the platform owner**, I want **the prod backend + frontend to scale up and down
 > with real traffic without exhausting the database or dropping requests**, so that

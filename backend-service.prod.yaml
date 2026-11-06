@@ -12,6 +12,9 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: bvo-backend-prod
+  annotations:
+    # Shared budget across revisions, including deployments with overlapping traffic.
+    run.googleapis.com/maxScale: "20"
   labels:
     app: bvo-backend
     env: prod
@@ -20,11 +23,7 @@ spec:
     metadata:
       annotations:
         autoscaling.knative.dev/minScale: "1"
-        # Lowered from 20 because the ceiling is the DATABASE, not Cloud Run. Every instance
-        # holds up to DB_POOL_MAX connections, and 20 x 5 = 100 would consume the whole Cloud SQL
-        # max_connections on its own. At containerConcurrency 80 this still admits ~800
-        # concurrent requests. Raise this ONLY together with DB_POOL_MAX and a confirmed
-        # max_connections — see docs/AUTOSCALING_TASK.md for the budget.
+        # Ten instances per revision, each with a ten-connection database pool.
         autoscaling.knative.dev/maxScale: "10"
         run.googleapis.com/vpc-access-connector: bvo-vpc-connector
         run.googleapis.com/vpc-access-egress: private-ranges-only
@@ -39,6 +38,8 @@ spec:
         run.googleapis.com/cpu-throttling: "false"
     spec:
       containerConcurrency: 80
+      # The standard client deadline is 30s, but booking and audition clients override it.
+      timeoutSeconds: 300
       containers:
         - image: backend
           ports:
@@ -108,17 +109,12 @@ spec:
               value: "true"
             # Per-instance Postgres pool ceiling (PostgresqlConnection.ts). Without this,
             # node-postgres defaults to 10 per instance and nothing bounds total connections.
-            # Budget against an assumed max_connections of 100. The only prod consumers are this
-            # service and bvo-migrate-prod — the document/audition worker Jobs are staging-only
-            # and hit the staging database:
-            #   backend   10 instances x 5 = 50
-            #   bvo-migrate-prod       x 2 =  2   (capped in scripts/run-migrations.ts)
-            #                              ----
-            #                                52, leaving headroom for the superuser reserve,
-            #                                psql sessions and admin tooling.
-            # Confirm the real ceiling with `SHOW max_connections;` and re-derive if it differs.
+              # Production reported 400 connections (3 reserved) on 2026-11-06.
+              # Allow 200 for overlapping revisions, 2 for a migration, and 10 each
+              # for demo cleanup and trial follow-up at one execution apiece. This
+              # leaves 175 ordinary slots for transient overlap and other clients.
             - name: DB_POOL_MAX
-              value: "5"
+                value: "10"
             # Production-only, admin-triggered actor conflict promotion. The
             # referenced staging credential has column-level SELECT access to
             # actor identity and usagePreferences only.

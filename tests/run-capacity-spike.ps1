@@ -1,6 +1,6 @@
-param([ValidateSet('candidate','control','memory','backend')][string]$Config = 'candidate')
+param([ValidateSet('candidate','control','memory','backend','backend-lean','backend-early')][string]$Config = 'candidate')
 $ErrorActionPreference = 'Stop'
-$fileName = if ($Config -eq 'backend') { 'backend-spike.js' } else { 'frontend-spike.js' }
+$fileName = if ($Config.StartsWith('backend')) { 'backend-spike.js' } else { 'frontend-spike.js' }
 $script = Get-Content -Raw (Join-Path $PSScriptRoot $fileName)
 $command = "cat > /tmp/bvo-capacity.js <<'BVO_TEST'`n" + $script + "`nBVO_TEST`nk6 run -e CONFIG=$Config --quiet /tmp/bvo-capacity.js"
 $build = @{
