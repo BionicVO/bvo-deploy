@@ -107,14 +107,12 @@ spec:
               value: "https://bionicvo.ai"
             - name: DB_SSL
               value: "true"
-            # Per-instance Postgres pool ceiling (PostgresqlConnection.ts). Without this,
-            # node-postgres defaults to 10 per instance and nothing bounds total connections.
-              # Production reported 400 connections (3 reserved) on 2026-11-06.
-              # Allow 200 for overlapping revisions, 2 for a migration, and 10 each
-              # for demo cleanup and trial follow-up at one execution apiece. This
-              # leaves 175 ordinary slots for transient overlap and other clients.
+            # Production reported 400 connections (3 reserved) on 2026-11-06.
+            # Allow 200 for overlapping revisions, 2 for a migration, and 10 each
+            # for demo cleanup and trial follow-up at one execution apiece. This
+            # leaves 175 ordinary slots for transient overlap and other clients.
             - name: DB_POOL_MAX
-                value: "10"
+              value: "10"
             # Production-only, admin-triggered actor conflict promotion. The
             # referenced staging credential has column-level SELECT access to
             # actor identity and usagePreferences only.
