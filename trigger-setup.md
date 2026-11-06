@@ -801,3 +801,11 @@ The current, working set of deploy-related files
 `skaffold-frontend.yaml`, `skaffold-backend.yaml`, the four service
 manifests, `promote-frontend-to-prod.yaml`, `promote-backend-to-prod.yaml`)
 belong in `bvo-deploy`, not in `bvo-new` or `bvo-api`.
+
+## Capacity validation before promotion
+
+Use the release image on a zero-traffic pre-production tag pointing to staging resources. Match the proposed CPU, memory, concurrency, pool size and warm floor. The regional runner in `tests/run-capacity-spike.ps1` submits the k6 workload to Cloud Build in us-central1. Its frontend targets are the `capacity-control`, `capacity-memory` and `capacity-spike` tags. The public API workload uses `capacity-api` or `capacity-lean`. Only the pre-production hostnames are accepted. After testing, remove the temporary tags to let revision-level warm instances stop.
+
+Require zero failed requests, zero unsent iterations and p95 below two seconds. Confirm instance count falls after the peak. Review Cloud SQL client counts and CPU, then attach the Cloud Build results to the release. The workload definition, selected settings and database budget are in [the capacity review](docs/AUTOSCALING_TASK.md).
+
+Use `monitoring/production-capacity.ps1 -NotificationChannel <resource-name>` to attach a verified delivery destination to the production policies. Check the dashboard and the production homepage, runtime configuration, JavaScript bundle, API health and a database-backed route after rollout.
