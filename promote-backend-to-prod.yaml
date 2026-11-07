@@ -7,6 +7,7 @@
 #
 # Usage:
 #   gcloud builds submit --no-source --config=promote-backend-to-prod.yaml \
+#     --service-account=projects/PROJECT_ID/serviceAccounts/bvo-cloudbuild-runner@PROJECT_ID.iam.gserviceaccount.com \
 #     --substitutions=_RELEASE=rel-<short-sha>,_REGION=REGION,_REPO=bvo-images,_DELIVERY_PIPELINE=bvo-backend-pipeline
 #
 # This does NOT bypass the approval gate: it calls `releases promote`, which
