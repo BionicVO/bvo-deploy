@@ -66,8 +66,7 @@ steps:
       - |
         set -euo pipefail
         gcloud run services describe bvo-backend-prod --region="${_REGION}" --format=json > /tmp/export-service.json
-        PYTHON=python3
-        if ! command -v python3 >/dev/null; then PYTHON=/usr/lib/google-cloud-sdk/platform/bundledpythonunix/bin/python3; fi
+        PYTHON="$$(gcloud info --format='value(basic.python_location)')"
         "$$PYTHON" - /tmp/export-service.json /tmp/export-worker.json "$$(cat /workspace/backend_image.txt)" <<'PY'
         import json
         import sys
