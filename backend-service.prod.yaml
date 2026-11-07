@@ -105,6 +105,8 @@ spec:
             # and must not be used as a single URL.
             - name: CLIENT_APP_URL
               value: "https://bionicvo.ai"
+            - name: STUDIO_EXPORT_QUEUE_ENABLED
+              value: "true"
             - name: DB_SSL
               value: "true"
             # Production reported 400 connections (3 reserved) on 2026-11-06.

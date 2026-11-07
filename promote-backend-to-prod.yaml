@@ -58,6 +58,45 @@ steps:
           --quiet
         gcloud run jobs execute bvo-migrate-prod --region="${_REGION}" --wait
 
+  - id: configure-production-export-workers
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        gcloud run services describe bvo-backend-prod --region="${_REGION}" --format=json > /tmp/export-service.json
+        PYTHON="$$(gcloud info --format='value(basic.python_location)')"
+        "$$PYTHON" - /tmp/export-service.json /tmp/export-worker.json "$$(cat /workspace/backend_image.txt)" <<'PY'
+        import json
+        import sys
+        
+        source, output, image = sys.argv[1:]
+        with open(source, encoding="utf-8-sig") as handle:
+            service = json.load(handle)
+        if service["metadata"]["name"] != "bvo-backend-prod":
+            raise ValueError("Export worker configuration expected production")
+        template = service["spec"]["template"]
+        spec = template["spec"]
+        annotations = {key: value for key, value in template.get("metadata", {}).get("annotations", {}).items()
+                       if key in ("run.googleapis.com/vpc-access-connector", "run.googleapis.com/vpc-access-egress", "run.googleapis.com/cloudsql-instances")}
+        env = [entry for entry in spec["containers"][0]["env"] if entry["name"] not in ("DB_POOL_MAX", "STUDIO_EXPORT_QUEUE_ENABLED")]
+        env += [{"name": "DB_POOL_MAX", "value": "3"}, {"name": "STUDIO_EXPORT_QUEUE_ENABLED", "value": "true"}]
+        job = {"apiVersion": "run.googleapis.com/v1", "kind": "Job", "metadata": {"name": "bvo-exports-prod"},
+               "spec": {"template": {"metadata": {"annotations": annotations}, "spec": {"taskCount": 2, "parallelism": 2, "template": {
+                   "spec": {"maxRetries": 0, "timeoutSeconds": "3600",
+                       "serviceAccountName": spec["serviceAccountName"], "containers": [{"image": image,
+                           "command": ["node"], "args": ["build/scripts/process-studio-exports.js"], "env": env,
+                           "resources": {"limits": {"cpu": "2", "memory": "2Gi"}}}]}}}}}}
+        with open(output, "w", encoding="utf-8") as handle:
+            json.dump(job, handle)
+        PY
+        gcloud run jobs replace /tmp/export-worker.json --region="${_REGION}" --quiet
+        gcloud run jobs add-iam-policy-binding bvo-exports-prod --region="${_REGION}" --member="serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com" --role=roles/run.invoker --quiet
+        ACTION=create
+        if gcloud scheduler jobs describe bvo-exports-prod-every-minute --location="${_REGION}" >/dev/null 2>&1; then ACTION=update; fi
+        gcloud scheduler jobs "$$ACTION" http bvo-exports-prod-every-minute --location="${_REGION}" --schedule="* * * * *" --time-zone=UTC --http-method=POST --uri="https://${_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$PROJECT_ID/jobs/bvo-exports-prod:run" --oauth-service-account-email="$PROJECT_NUMBER-compute@developer.gserviceaccount.com" --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform --quiet
+
   - id: promote-to-prod
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
