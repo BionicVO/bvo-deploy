@@ -98,6 +98,23 @@ steps:
         if gcloud scheduler jobs describe bvo-exports-prod-every-minute --location="${_REGION}" >/dev/null 2>&1; then ACTION=update; fi
         gcloud scheduler jobs "$$ACTION" http bvo-exports-prod-every-minute --location="${_REGION}" --schedule="* * * * *" --time-zone=UTC --http-method=POST --uri="https://${_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$PROJECT_ID/jobs/bvo-exports-prod:run" --oauth-service-account-email="$PROJECT_NUMBER-compute@developer.gserviceaccount.com" --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform --quiet
 
+  # The P10 email job is first provisioned after portal validation. Keep its
+  # image aligned with the API on subsequent promotions.
+  - id: update-production-email-worker
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if gcloud run jobs list --region="${_REGION}" --format='value(metadata.name)' > /tmp/production-jobs; then
+          if grep -Fxq bvo-automated-emails-prod /tmp/production-jobs; then
+            gcloud run jobs update bvo-automated-emails-prod --region="${_REGION}" --image="$$(cat /workspace/backend_image.txt)" --quiet
+          fi
+        else
+          exit 1
+        fi
+
   - id: promote-to-prod
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
